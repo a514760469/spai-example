@@ -1,0 +1,12 @@
+spring:
+    ai:
+        openai:
+            api-key: ${AI_DEEPSEEK_API_KEY}
+            base-url: https://api.deepseek.com
+            chat:
+                options:
+                    model: deepseek-chat
+    application:
+        name: example-spring-ai-open-ai-01
+server:
+    port: 10001

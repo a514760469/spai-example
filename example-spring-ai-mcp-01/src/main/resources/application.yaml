@@ -1,0 +1,16 @@
+spring:
+    main:
+        web-application-type: none
+    ai:
+        dashscope:
+            api-key: ${DASHSCOPE_API_KEY}
+            chat:
+                options:
+#                    model: deepseek-r1
+                    model: qwen-plus
+    application:
+        name: example-spring-ai-mcp-01
+logging:
+    level:
+        root: info
+        org.springframework.ai.chat.client.advisor: DEBUG

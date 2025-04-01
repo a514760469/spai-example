@@ -1,0 +1,10 @@
+spring:
+    ai:
+        ollama:
+            base-url: http://localhost:11434
+            chat:
+                model: deepseek-r1:1.5b
+    application:
+        name: example-spring-ai-ollama-01
+server:
+    port: 10001
