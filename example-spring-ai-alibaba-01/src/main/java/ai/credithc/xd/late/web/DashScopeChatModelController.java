@@ -33,7 +33,7 @@ public class DashScopeChatModelController {
 
     private final ChatClient dashScopeChatClient;
 
-    public DashScopeChatModelController(ChatModel chatModel, ChatClient.Builder chatClientBuilder) {
+    public DashScopeChatModelController(ChatModel chatModel) {
 
         this.dashScopeChatModel = chatModel;
         // 构造时，可以设置 ChatClient 的参数

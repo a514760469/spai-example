@@ -42,15 +42,15 @@ public class SpringAIMcpApplication {
             System.out.println("Running predefined questions with AI model responses:\n");
 
             // Question 1
-            String question1 = "Can you explain the content of the spring-ai-mcp-overview.txt file?";
+            String question1 = "你能解释一下spring-ai-mcp-overview.txt文件的内容吗？";
             System.out.println("QUESTION: " + question1);
             System.out.println("ASSISTANT: " + chatClient.prompt(question1).call().content());
 
             // Question 2
-            String question2 = "Pleses summarize the content of the spring-ai-mcp-overview.txt file and store it a new summary.md as Markdown format?";
+            String question2 = "请总结 spring-ai-mcp-overview. txt 文件的内容，并将其存储为 Markdown 格式的新 summary.md?";
             System.out.println("QUESTION: " + question2);
             System.out.println("ASSISTANT: " + chatClient.prompt(question2).call().content());
-            context.close();
+//            context.close();
 
         };
     }
@@ -69,7 +69,7 @@ public class SpringAIMcpApplication {
         // https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem
         String filePath = getDbPath();
         System.err.println(STR. "filePath: \{filePath}");
-        var stdioParams = ServerParameters.builder("npx")
+        var stdioParams = ServerParameters.builder("npx.cmd")
                 .args("-y", "@modelcontextprotocol/server-filesystem", filePath)
                 .build();
 
@@ -90,6 +90,7 @@ public class SpringAIMcpApplication {
     }
 
     static String getDbPath() {
+//        return Paths.get(STR."\{System.getProperty("user.dir")}\\spring-ai-mcp-overview.txt").toString();
         return Paths.get(STR."\{System.getProperty("user.dir")}").toString();
     }
 }
