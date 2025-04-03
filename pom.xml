@@ -16,6 +16,7 @@
         <module>example-spring-ai-open-ai-01</module>
         <module>example-spring-ai-ollama-01</module>
         <module>example-spring-ai-mcp-01</module>
+        <module>example-spring-ai-rag-01</module>
     </modules>
 
     <properties>

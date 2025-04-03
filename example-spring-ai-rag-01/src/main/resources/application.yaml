@@ -1,0 +1,21 @@
+spring:
+    ai:
+        dashscope:
+            api-key: ${DASHSCOPE_API_KEY}
+            chat:
+                options:
+                    model: qwen-plus
+        vectorstore:
+            elasticsearch:
+                index-name: example-spring-ai-index
+                similarity: cosine
+                dimensions: 1536
+
+    application:
+        name: example-spring-ai-rag-01
+    elasticsearch:
+        uris: http://127.0.0.1:9200
+logging:
+    level:
+        root: info
+        org.springframework.ai.chat.client.advisor: DEBUG
