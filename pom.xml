@@ -17,6 +17,7 @@
         <module>example-spring-ai-ollama-01</module>
         <module>example-spring-ai-mcp-01</module>
         <module>example-spring-ai-rag-01</module>
+        <module>example-langchain4j-01</module>
     </modules>
 
     <properties>
@@ -67,6 +68,14 @@
                 <groupId>com.alibaba.cloud.ai</groupId>
                 <artifactId>spring-ai-alibaba-starter</artifactId>
                 <version>${spring-ai-alibaba.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>dev.langchain4j</groupId>
+                <artifactId>langchain4j-bom</artifactId>
+                <version>1.0.1</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>
