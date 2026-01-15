@@ -29,7 +29,7 @@ public class ImageModelController {
         ImageResponse response = imageModel.call(imagePrompt);
         String imageUrl = response.getResult().getOutput().getUrl();
 
-        return STR."redirect:\{imageUrl}";
+        return "redirect:" + imageUrl;
     }
 
 }

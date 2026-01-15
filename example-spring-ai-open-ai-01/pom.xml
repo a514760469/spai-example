@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.credithc.xd.late.module</groupId>
         <artifactId>spai-example</artifactId>
-        <version>1.0-SNAPSHOT</version>
+        <version>${revision}</version>
     </parent>
 
     <groupId>ai.credithc.xd.late</groupId>

@@ -23,7 +23,7 @@ public class ModelClientTest {
         ActorFilms entity = chatClient.prompt().user("Generate the filmography for a random actor.")
                 .call().entity(ActorFilms.class);
 
-        System.out.println(STR."entity = \{entity}");
+        System.out.println("entity = " + entity);
     }
 
 

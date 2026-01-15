@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.credithc.xd.late.module</groupId>
         <artifactId>spai-example</artifactId>
-        <version>1.0-SNAPSHOT</version>
+        <version>${revision}</version>
     </parent>
 
     <groupId>ai.credithc.xd.late</groupId>
@@ -28,7 +28,7 @@
         <dependency>
             <groupId>com.alibaba.cloud.ai</groupId>
             <artifactId>spring-ai-alibaba-starter</artifactId>
-            <version>${spring-ai-alibaba.version}</version>
+            <version>1.0.0-M6.1</version>
         </dependency>
 
         <dependency>

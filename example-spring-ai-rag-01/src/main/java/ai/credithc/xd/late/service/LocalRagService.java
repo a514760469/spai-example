@@ -128,25 +128,28 @@ public class LocalRagService implements RagService {
                     .of(settings -> settings.numberOfShards(String.valueOf(1)).numberOfReplicas(String.valueOf(1)));
 
             // Maybe using json directly?
-            Map<String, Property> properties = new HashMap<>();
-            properties.put(vectorField, Property.of(property -> property.denseVector(
-                    DenseVectorProperty.of(dense -> dense.index(true).dims(dimsLength).similarity(similarityAlgo)))));
-            properties.put(textField, Property.of(property -> property.text(TextProperty.of(t -> t))));
+//            Map<String, Property> properties = new HashMap<>();
+//            properties.put(vectorField, Property.of(property -> {
+//                return property.denseVector(DenseVectorProperty.of(dense -> {
+//                    return dense.index(true).dims(dimsLength).build().similarity(similarityAlgo);
+//                }));
+//            }));
+//            properties.put(textField, Property.of(property -> property.text(TextProperty.of(t -> t))));
 
             Map<String, Property> metadata = new HashMap<>();
             metadata.put("ref_doc_id", Property.of(property -> property.keyword(KeywordProperty.of(k -> k))));
 
-            properties.put("metadata",
-                    Property.of(property -> property.object(ObjectProperty.of(op -> op.properties(metadata)))));
+//            properties.put("metadata",
+//                    Property.of(property -> property.object(ObjectProperty.of(op -> op.properties(metadata)))));
 
-            CreateIndexResponse indexResponse = elasticsearchClient.indices()
-                    .create(createIndexBuilder -> createIndexBuilder.index(indexName)
-                            .settings(indexSettings)
-                            .mappings(TypeMapping.of(mappings -> mappings.properties(properties))));
+//            CreateIndexResponse indexResponse = elasticsearchClient.indices()
+//                    .create(createIndexBuilder -> createIndexBuilder.index(indexName)
+//                            .settings(indexSettings)
+//                            .mappings(TypeMapping.of(mappings -> mappings.properties(properties))));
 
-            if (!indexResponse.acknowledged()) {
-                throw new RuntimeException("failed to create index");
-            }
+//            if (!indexResponse.acknowledged()) {
+//                throw new RuntimeException("failed to create index");
+//            }
 
             logger.info("create elasticsearch index {} successfully", indexName);
         }

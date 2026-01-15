@@ -13,7 +13,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 
-import java.io.File;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.List;
@@ -34,7 +33,7 @@ public class SpringAIMcpApplication {
     public CommandLineRunner predefinedQuestions(ChatClient.Builder chatClientBuilder,
                                                  List<McpFunctionCallback> functionCallbacks,
                                                  ConfigurableApplicationContext context) {
-        return _ -> {
+        return unnamed -> {
             var chatClient = chatClientBuilder
                     .defaultTools(functionCallbacks.toArray(new McpFunctionCallback[0]))
                     .build();
@@ -68,7 +67,7 @@ public class SpringAIMcpApplication {
         // based on
         // https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem
         String filePath = getDbPath();
-        System.err.println(STR. "filePath: \{filePath}");
+        System.err.println("filePath: " + filePath);
         var stdioParams = ServerParameters.builder("npx.cmd")
                 .args("-y", "@modelcontextprotocol/server-filesystem", filePath)
                 .build();
@@ -78,7 +77,7 @@ public class SpringAIMcpApplication {
 
         var init = mcpClient.initialize();
 
-        System.out.println(STR."MCP Initialized: \{init}");
+        System.out.println("MCP Initialized: " + init);
 
         return mcpClient;
 
@@ -91,6 +90,6 @@ public class SpringAIMcpApplication {
 
     static String getDbPath() {
 //        return Paths.get(STR."\{System.getProperty("user.dir")}\\spring-ai-mcp-overview.txt").toString();
-        return Paths.get(STR."\{System.getProperty("user.dir")}").toString();
+        return Paths.get(System.getProperty("user.dir")).toString();
     }
 }
