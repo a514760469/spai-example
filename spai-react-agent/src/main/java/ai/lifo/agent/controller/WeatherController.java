@@ -1,4 +1,4 @@
-package ai.lifo.agent.web;
+package ai.lifo.agent.controller;
 
 import ai.lifo.agent.prompt.WeatherPrompt;
 import ai.lifo.agent.response.ResponseFormat;
