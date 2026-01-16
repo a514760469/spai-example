@@ -36,6 +36,7 @@ public class WeatherController implements InitializingBean {
                 .build();
 
         // Note: model must be set when use options build.
+        // temperature 0.0 - 1.0 越高越有创造性
         ChatModel chatModel = DashScopeChatModel.builder()
                 .dashScopeApi(dashScopeApi)
                 .defaultOptions(DashScopeChatOptions.builder()
