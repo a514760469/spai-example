@@ -1,0 +1,17 @@
+server:
+    port: 20001
+spring:
+    ai:
+        mcp:
+            server:
+                name: ${spring.application.name}            # mcp-server mcp服务器名称
+                protocol: streamable                        # 协议类型
+                type: async
+                instructions: "This server provides tools to read and search Nacos configuration items"
+                request-timeout: 20s
+                streamable-http:
+                    disallow-delete: false
+                    keep-alive-interval: 30s
+                    mcp-endpoint: /mcp
+    application:
+        name: mcp-nacos-server

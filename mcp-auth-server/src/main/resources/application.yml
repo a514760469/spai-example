@@ -1,0 +1,45 @@
+server:
+    port: 20000
+
+spring:
+    application:
+        name: mcp-auth-server
+    ai:
+        mcp:
+            server:
+                name: ${spring.application.name}            # mcp-server mcp服务器名称
+                protocol: streamable                        # 协议类型
+                type: async
+                instructions: "This reactive server provides time information tools and resources"
+                request-timeout: 20s
+                streamable-http:
+                    disallow-delete: false
+                    keep-alive-interval: 30s
+                    mcp-endpoint: /mcp
+
+
+                # ip:port/sse/mcp
+                sse-endpoint: /sse
+                sse-message-endpoint: /mcp
+        alibaba:
+            mcp:
+                nacos:
+                    username: nacos
+                    password: nacos
+                    server-addr: 127.0.0.1:8848
+                    namespace: public
+                    register:
+                        enabled: true
+                        service-group: mcp-server
+                        service-name: ${spring.application.name}
+
+
+logging:
+    level:
+        org.springframework.context.support.PostProcessorRegistrationDelegate: ERROR
+        # org.springframework.web.reactive: DEBUG
+        # reactor.netty.http.server: DEBUG
+        io.modelcontextprotocol:
+            client: DEBUG
+            spec: DEBUG
+            server: DEBUG

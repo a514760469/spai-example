@@ -1,0 +1,21 @@
+spring:
+    ai:
+        openai:
+            api-key: ${ARK_API_KEY}
+            base-url: https://ark.cn-beijing.volces.com/api/
+            chat:
+                options:
+                    model: ${ARK_MODEL_ID:gpt-3.5-turbo}
+
+                completions-path: /v3/chat/completions
+
+
+
+logging:
+    level:
+        org:
+            springframework:
+                ai:
+                    chat:
+                        client:
+                            advisor: DEBUG

@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.credithc.xd.late.module</groupId>
+    <groupId>ai.lifo.spai.example</groupId>
     <artifactId>spai-example</artifactId>
     <version>${revision}</version>
     <packaging>pom</packaging>
@@ -15,10 +15,16 @@
         <module>example-spring-ai-alibaba-01</module>
         <module>example-spring-ai-open-ai-01</module>
         <module>example-spring-ai-ollama-01</module>
-        <module>example-spring-ai-mcp-01</module>
+        <module>mcp-filesystem</module>
         <module>example-spring-ai-rag-01</module>
         <module>example-langchain4j-01</module>
         <module>spai-react-agent</module>
+        <module>mcp-auth-server</module>
+        <module>mcp-auth-client</module>
+        <module>mcp-client-web</module>
+        <module>mcp-gateway</module>
+        <module>multi-model</module>
+        <module>mcp-nacos-server</module>
     </modules>
 
     <properties>
@@ -29,6 +35,7 @@
 
         <!-- Spring AI Alibaba -->
         <spring-ai-alibaba.version>1.1.2.0</spring-ai-alibaba.version>
+        <spring-ai-alibaba-extensions.version>1.1.2.1</spring-ai-alibaba-extensions.version>
 
         <!-- Spring Boot -->
         <spring-boot.version>3.5.9</spring-boot.version>
@@ -49,6 +56,13 @@
         <maven.compiler.target>21</maven.compiler.target>
     </properties>
 
+    <dependencies>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+    </dependencies>
+
     <dependencyManagement>
         <dependencies>
             <dependency>
@@ -65,13 +79,18 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-
             <dependency>
                 <groupId>com.alibaba.cloud.ai</groupId>
                 <artifactId>spring-ai-alibaba-bom</artifactId>
                 <version>${spring-ai-alibaba.version}</version>
             </dependency>
-
+            <dependency>
+                <groupId>com.alibaba.cloud.ai</groupId>
+                <artifactId>spring-ai-alibaba-extensions-bom</artifactId>
+                <version>${spring-ai-alibaba-extensions.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>dev.langchain4j</groupId>
                 <artifactId>langchain4j-bom</artifactId>
@@ -79,7 +98,6 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-
             <dependency>
                 <groupId>org.projectlombok</groupId>
                 <artifactId>lombok</artifactId>

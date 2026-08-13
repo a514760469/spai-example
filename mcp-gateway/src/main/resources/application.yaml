@@ -1,0 +1,35 @@
+server:
+    port: 19000
+spring:
+    ai:
+        mcp:
+            server:
+                name: ${spring.application.name}
+                protocol: sse
+                type: async
+                instructions: "聚合多个MCP Server 的工具网关"
+                sse-message-endpoint: /mcp/message
+                capabilities:
+                    tool: true
+                    resource: false
+                    prompt: false
+                    completion: false
+        alibaba:
+            mcp:
+                gateway:
+                    enabled: true
+                    registry: nacos
+                    nacos:
+                        service-names:
+                            - mcp-auth-server
+                nacos:
+                    server-addr: localhost:8848
+                    namespace: public
+                    username: nacos
+                    password: nacos
+        dashscope:
+            api-key: ${AI_DASHSCOPE_API_KEY}
+    application:
+        name: mcp-gateway-server
+    main:
+        allow-bean-definition-overriding: true

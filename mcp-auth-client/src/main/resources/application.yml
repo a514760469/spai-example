@@ -1,0 +1,34 @@
+server:
+    port: 20001
+
+spring:
+    application:
+        name: mcp-auth-client
+    main:
+        web-application-type: none
+    ai:
+        dashscope:
+            api-key: ${AI_DASHSCOPE_API_KEY}
+        mcp:
+            client:
+                enabled: true
+                name: ${spring.application.name}
+                version: 1.0.0
+                request-timeout: 600s
+                type: async
+                streamable-http:
+                    connections:
+                        server1:
+                            url: http://localhost:20000
+                            endpoint: /mcp
+                annotation-scanner:
+                    enabled: true
+
+#                stdio:
+#                    servers-configuration: classpath:/mcp-servers-config.json
+logging:
+    level:
+        io:
+            modelcontextprotocol:
+                client: info
+                spec: info
