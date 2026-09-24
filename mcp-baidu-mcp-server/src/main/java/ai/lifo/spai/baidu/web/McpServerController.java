@@ -1,13 +1,11 @@
-package ai.lifo.spai.example.controller;
+package ai.lifo.spai.baidu.web;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -18,13 +16,12 @@ import java.util.stream.Collectors;
 
 /**
  * @author zhanglifeng
- * @since 2026-05-16
+ * @since 2026-09-17
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/gateway")
 @RequiredArgsConstructor
-public class GatewayController {
+public class McpServerController {
 
     private final ChatModel chatModel;
 
@@ -69,4 +66,5 @@ public class GatewayController {
         log.info("AI 响应: {}", response);
         return response;
     }
+
 }

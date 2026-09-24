@@ -11,10 +11,8 @@
 
 
     <modules>
-        <module>example-dashscope-01</module>
         <module>example-spring-ai-alibaba-01</module>
         <module>example-spring-ai-open-ai-01</module>
-        <module>example-spring-ai-ollama-01</module>
         <module>mcp-filesystem</module>
         <module>example-spring-ai-rag-01</module>
         <module>example-langchain4j-01</module>
@@ -25,6 +23,9 @@
         <module>mcp-gateway</module>
         <module>multi-model</module>
         <module>mcp-nacos-server</module>
+        <module>mcp-baidu-mcp-server</module>
+        <module>chat-example</module>
+        <module>mcp-web-client</module>
     </modules>
 
     <properties>
@@ -35,7 +36,7 @@
 
         <!-- Spring AI Alibaba -->
         <spring-ai-alibaba.version>1.1.2.0</spring-ai-alibaba.version>
-        <spring-ai-alibaba-extensions.version>1.1.2.1</spring-ai-alibaba-extensions.version>
+        <spring-ai-alibaba-extensions.version>1.1.2.3</spring-ai-alibaba-extensions.version>
 
         <!-- Spring Boot -->
         <spring-boot.version>3.5.9</spring-boot.version>

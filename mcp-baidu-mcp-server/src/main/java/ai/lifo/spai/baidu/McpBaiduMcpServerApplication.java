@@ -1,16 +1,16 @@
-package ai.credithc.xd.late;
+package ai.lifo.spai.baidu;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
  * @author zhanglifeng
- * @since 2025-04-02
+ * @since 2026-04-29
  */
 @SpringBootApplication
-public class SpringAIRag01Application {
+public class McpBaiduMcpServerApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(SpringAIRag01Application.class, args);
+        SpringApplication.run(McpBaiduMcpServerApplication.class, args);
     }
 }

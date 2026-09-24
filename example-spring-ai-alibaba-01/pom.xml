@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.credithc.xd.late.module</groupId>
+        <groupId>ai.lifo.spai.example</groupId>
         <artifactId>spai-example</artifactId>
         <version>${revision}</version>
     </parent>
@@ -30,8 +30,7 @@
 
         <dependency>
             <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-starter</artifactId>
-            <version>1.0.0-M6.1</version>
+            <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
         </dependency>
 
     </dependencies>
