@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Configuration;
 public class ProviderConfiguration {
 
     /**
-     * 添加一个时间工具
+     * 时间工具
      *
      * @param timeService 时间服务
      * @return 时间工具
@@ -24,7 +24,7 @@ public class ProviderConfiguration {
     }
 
     /**
-     * 添加一个股票工具
+     * 股票工具
      *
      * @param stockService 股票服务
      * @return 股票工具
@@ -35,7 +35,7 @@ public class ProviderConfiguration {
     }
 
     /**
-     * 添加一个天气工具
+     * 天气工具
      *
      * @param weatherService 天气服务
      * @return 天气工具

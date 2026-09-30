@@ -25,7 +25,6 @@ spring:
                     enabled: true
                 stdio:
                     servers-configuration: classpath:/mcp-server.json5
-#                stdio:
 #                    servers-configuration: classpath:/mcp-servers-config.json
 logging:
     level:

@@ -1,5 +1,5 @@
 server:
-    port: 20001
+    port: 19001
 spring:
     ai:
         mcp:
@@ -13,5 +13,20 @@ spring:
                     disallow-delete: false
                     keep-alive-interval: 30s
                     mcp-endpoint: /mcp
+
+        alibaba:
+            mcp:
+                nacos:
+                    username: nacos
+                    password: nacos
+                    server-addr: 127.0.0.1:8848
+                    namespace: public
+                    register:
+                        enabled: true
+                        service-group: mcp-server
+                        service-name: ${spring.application.name}
     application:
         name: mcp-nacos-server
+logging:
+    level:
+        com.alibaba.cloud.ai.mcp.register.NacosMcpRegister: warn

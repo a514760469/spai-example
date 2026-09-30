@@ -16,13 +16,12 @@ spring:
                     disallow-delete: false
                     keep-alive-interval: 30s
                     mcp-endpoint: /mcp
-
-
                 # ip:port/sse/mcp
                 sse-endpoint: /sse
                 sse-message-endpoint: /mcp
         alibaba:
             mcp:
+                # 注册到nacos
                 nacos:
                     username: nacos
                     password: nacos

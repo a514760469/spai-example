@@ -22,6 +22,8 @@ spring:
                     nacos:
                         service-names:
                             - mcp-auth-server
+                            - mcp-nacos-server
+                # 从nacos 自动发现配置的mcp server
                 nacos:
                     server-addr: localhost:8848
                     namespace: public

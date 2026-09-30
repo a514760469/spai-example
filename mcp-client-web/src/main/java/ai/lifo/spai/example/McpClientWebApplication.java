@@ -34,10 +34,11 @@ public class McpClientWebApplication {
             log.info("注册的服务发现实现数量: {}", factory.size());
 
             // 测试服务查找
-            testServiceDiscovery(mcpServiceDiscovery, "weather-service");
-            testServiceDiscovery(mcpServiceDiscovery, "dashscope-chat");
-            testServiceDiscovery(mcpServiceDiscovery, "search-service");
-            testServiceDiscovery(mcpServiceDiscovery, "non-existent-service");
+            testServiceDiscovery(mcpServiceDiscovery, "mcp-auth-server");
+//            testServiceDiscovery(mcpServiceDiscovery, "weather-service");
+//            testServiceDiscovery(mcpServiceDiscovery, "dashscope-chat");
+//            testServiceDiscovery(mcpServiceDiscovery, "search-service");
+//            testServiceDiscovery(mcpServiceDiscovery, "non-existent-service");
 
             log.info("=== 演示完成 ===");
         };

@@ -11,6 +11,7 @@ spring:
             mcp:
                 router:
                     enabled: true
+                    # 多种查找方式按顺序查找
                     discovery-order:
                         - file
                         - database
@@ -37,10 +38,12 @@ spring:
                               - "nlp"
                     database:
                         enabled: true
-                        url: jdbc:mysql://localhost:3340/testdb?useSSL=false
+                        url: jdbc:mysql://localhost:3307/spai?useSSL=false
                         username: root
                         password: 123456
                         driver-class-name: com.mysql.cj.jdbc.Driver
                 nacos:
                     server-addr: localhost:8848
                     namespace: public
+                    username: nacos
+                    password: nacos
