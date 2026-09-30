@@ -11,8 +11,6 @@
 
 
     <modules>
-        <module>example-spring-ai-alibaba-01</module>
-        <module>example-spring-ai-open-ai-01</module>
         <module>mcp-filesystem</module>
         <module>example-spring-ai-rag-01</module>
         <module>example-langchain4j-01</module>
@@ -26,6 +24,7 @@
         <module>mcp-baidu-mcp-server</module>
         <module>chat-example</module>
         <module>mcp-web-client</module>
+        <module>chat-memory</module>
     </modules>
 
     <properties>

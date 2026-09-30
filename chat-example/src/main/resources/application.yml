@@ -11,6 +11,7 @@ spring:
             chat:
                 options:
                     model: qwen3.8-max
+                    multi-model: true # # qwen3.8-max 是多模态需要开启，qwen-max 则不用
         deepseek:
             api-key: ${AI_DEEPSEEK_API_KEY}
             chat:

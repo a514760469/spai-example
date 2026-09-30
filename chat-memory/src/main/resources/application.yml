@@ -1,0 +1,32 @@
+server:
+    port: 8080
+spring:
+    application:
+        name: chat-example
+    ai:
+        dashscope:
+            api-key: ${AI_DASHSCOPE_API_KEY}
+            chat:
+                options:
+                    model: qwen3.8-max
+                    multi-model: true # qwen3.8-max 是多模态需要开启，qwen-max 则不用
+    datasource:
+        hikari:
+            jdbc-url: jdbc:mysql://localhost:3307/spai?useUnicode=true&characterEncoding=utf-8&useSSL=false&allowPublicKeyRetrieval=true&zeroDateTimeBehavior=convertToNull&transformedBitIsBoolean=true&allowMultiQueries=true&tinyInt1isBit=false&allowLoadLocalInfile=true&allowLocalInfile=true&allowUrl
+            driver-class-name: com.mysql.cj.jdbc.Driver
+            username: root
+            password: 123456
+mybatis-plus:
+    configuration:
+        log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+# enabled debug log out.
+logging:
+    level:
+        org.springframework.ai: debug
+        com.alibaba.dashscope.api: debug
+        com.alibaba.cloud.ai.dashscope.chat: debug
+        # request url debug
+        org.springframework.web.client: debug
+        org.apache.hc.client5.http: debug
+        # 调试日志：看看记忆是怎么被提取和检索的
+        com.alibaba.cloud.ai.memory.mem0: DEBUG
