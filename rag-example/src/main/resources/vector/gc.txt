@@ -1,0 +1,8 @@
+什么是Java里的垃圾回收？如何触发垃圾回收？
+
+Java 里的垃圾回收是 JVM 提供的自动内存管理机制。它的任务是找出堆中不再被使用的对象，并回收这些对象占用的内存，避免手动释放内存带来的问题。
+JVM 判断对象是否可回收，主流方式是可达性分析。它从一组 GC Roots 出发，比如虚拟机栈中的局部变量、静态变量、JNI 引用、活动线程等。能被 GC Roots 直接或间接引用到的对象是可达对象，不能被引用到的对象就可以被回收。循环引用不会被误判为存活。堆通常分新生代和老年代，新生代又分 Eden 和两个 Survivor 区，对象一般先在 Eden 分配，经历多次 Minor GC 后可能晋升到老年代。
+关于如何触发垃圾回收，Java 不能强制、精确地触发某一次 GC，只能建议 JVM 执行，JVM 可以忽略。自动触发最常见：Eden 区满时触发 Minor GC 或 Young GC；老年代空间不足、对象晋升老年代失败、元空间不足、大对象分配失败，以及不同收集器的内部条件，可能触发 Major GC 或 Full GC。不同收集器如 Serial、Parallel、G1、ZGC、Shenandoah 的触发策略不同。
+显式建议触发可以调用 System.gc()，或 Runtime.getRuntime().gc()，也可以通过 JMX 的 MemoryMXBean.gc()，或用命令行工具执行 jcmd 进程号 GC.run。但 System.gc() 只是建议，不保证立即执行，默认可能触发一次 Full GC，造成 Stop-The-World，影响性能。生产环境通常不建议依赖它。JVM 参数 -XX:+DisableExplicitGC 可以忽略显式 GC 调用；-XX:+ExplicitGCInvokesConcurrent 可以让显式 GC 尽量并发执行。
+实际开发中不要靠 System.gc() 解决内存问题，应该排查对象为什么无法回收。资源释放用 try-with-resources、AutoCloseable、Cleaner，不要依赖 finalize()。GC 调优通常通过选择收集器和参数，例如 -XX:+UseG1GC、-XX:MaxGCPauseMillis、-Xmx、-Xms 等，并用 jstat、jcmd、GC 日志、VisualVM、JProfiler 观察。
+Java 的垃圾回收（Garbage Collection，GC）是 JVM 提供的**自动内存管理机制**：它负责找出堆中“不再被使用”的对象，并回收它们占用的内存，避免程序员手动 `free/delete` 导致内存泄漏或悬空指针。

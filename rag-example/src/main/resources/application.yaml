@@ -1,0 +1,68 @@
+server:
+    port: 8080
+spring:
+    application:
+        name: rag-example
+    ai:
+        dashscope:
+            api-key: ${AI_DASHSCOPE_API_KEY}
+            chat:
+                options:
+                    model: qwen3.8-max
+                    multi-model: true # qwen3.8-max 是多模态需要开启，qwen-max 则不用
+            embedding:
+                options:
+                    model: qwen3.7-text-embedding
+                    dimensions: 1536
+            rerank:
+                options:
+                    model: qwen3.7-text-rerank
+        vectorstore:
+            neo4j:
+                database-name: neo4j
+                initialize-schema: true
+                index-name: spai
+                embedding-dimension: 1536
+                distance-type: cosine
+            redis:
+                initialize-schema: true
+                index-name: spai
+                prefix: "spai:"
+            pgvector:
+                dimensions: 1536
+                distance-type: cosine_distance
+                index-type: hnsw
+#                initialize-schema: true
+                schema-validation: true
+                max-document-batch-size: 10000
+                schema-name: spai
+            qdrant:
+                host: 127.0.0.1
+                port: 6334
+#                api-key: <qdrant api key>
+                collection-name: vector_store
+                use-tls: false
+                initialize-schema: true
+    neo4j:
+        authentication:
+            username: neo4j
+            password: Neo4j@123456
+        uri: bolt://localhost:7687
+    data:
+        redis:
+            password: 123456
+            host: localhost
+            database: 0
+    datasource:
+        url: jdbc:postgresql://localhost:5432/postgres
+        username: postgres
+        password: password
+logging:
+    level:
+        org.springframework.jdbc.core.JdbcTemplate: debug
+        org.springframework.ai: debug
+        com.alibaba.dashscope.api: debug
+        com.alibaba.cloud.ai.dashscope.chat: debug
+        # request url debug
+        org.springframework.web.client: debug
+        org.apache.hc.client5.http: debug

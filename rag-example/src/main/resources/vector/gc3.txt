@@ -1,0 +1,8 @@
+垃圾回收器有哪些？
+Java HotSpot 常见的垃圾回收器有这些。按作用区域分，新生代收集器包括 Serial、ParNew、Parallel Scavenge。Serial 是串行复制算法，Stop-The-World，参数是 -XX:+UseSerialGC，适合单核或小内存客户端。ParNew 是 Serial 的多线程版，主要和 CMS 搭配，旧版本常见，新版本已不推荐使用。Parallel Scavenge 是并行复制算法，吞吐量优先，参数是 -XX:+UseParallelGC。
+
+老年代收集器包括 Serial Old、Parallel Old、CMS。Serial Old 是串行标记整理，常作为 CMS 的后备。Parallel Old 是并行标记整理，和 Parallel Scavenge 搭配，参数是 -XX:+UseParallelOldGC。CMS 是并发标记清除，低延迟，参数是 -XX:+UseConcMarkSweepGC，JDK 9 弃用，JDK 14 移除，有浮动垃圾和内存碎片问题。
+
+整堆收集器包括 G1、ZGC、Shenandoah、Epsilon。G1 把堆分成 Region，分代，复制加标记整理，可预测停顿，参数是 -XX:+UseG1GC，JDK 9 起默认。ZGC 是并发低延迟，染色指针和读屏障，参数是 -XX:+UseZGC，JDK 11 实验，JDK 15 正式，JDK 21 支持分代 ZGC。Shenandoah 也是并发低延迟，参数是 -XX:+UseShenandoahGC，JDK 12 实验，JDK 15 正式，OpenJDK 提供。Epsilon 是无操作收集器，不回收，参数是 -XX:+UseEpsilonGC，JDK 11 实验，用于性能测试。
+
+传统分代组合有 Serial 加 Serial Old，ParNew 加 CMS 加 Serial Old，Parallel Scavenge 加 Parallel Old。JDK 8 默认 Parallel Scavenge 加 Parallel Old，JDK 9 起默认 G1。选择看吞吐量、延迟、内存和 CPU。OpenJ9 还有 gencon、balanced、metronome 等，但不是 HotSpot 标准。

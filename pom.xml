@@ -12,7 +12,6 @@
 
     <modules>
         <module>mcp-filesystem</module>
-        <module>example-spring-ai-rag-01</module>
         <module>example-langchain4j-01</module>
         <module>spai-react-agent</module>
         <module>mcp-auth-server</module>
@@ -25,6 +24,9 @@
         <module>chat-example</module>
         <module>mcp-web-client</module>
         <module>chat-memory</module>
+        <module>rag-example</module>
+        <module>rag-saa-example</module>
+        <module>rag-my-knowledge</module>
     </modules>
 
     <properties>
