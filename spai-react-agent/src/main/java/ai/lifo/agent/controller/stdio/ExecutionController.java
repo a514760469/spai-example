@@ -26,18 +26,19 @@ import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.action.InterruptionMetadata;
 import com.alibaba.cloud.ai.graph.agent.Agent;
+import com.alibaba.cloud.ai.graph.agent.tools.ShellSessionManager;
 import com.alibaba.cloud.ai.graph.exception.GraphRunnerException;
+import com.alibaba.cloud.ai.graph.store.Store;
 import com.alibaba.cloud.ai.graph.streaming.OutputType;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.metadata.Usage;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
@@ -51,17 +52,16 @@ import reactor.core.publisher.Flux;
  * Controller handling agent execution endpoints.
  * @see com.alibaba.cloud.ai.agent.studio.controller.ExecutionController
  */
+@Slf4j
 @RestController("myExecutionController")
+@RequiredArgsConstructor
 public class ExecutionController {
 
-	private static final Logger log = LoggerFactory.getLogger(ExecutionController.class);
-	final ObjectMapper mapper = new ObjectMapper();
+	private final ObjectMapper mapper = new ObjectMapper();
+
 	private final AgentLoader agentLoader;
 
-	@Autowired
-	public ExecutionController(AgentLoader agentLoader) {
-		this.agentLoader = agentLoader;
-	}
+	private final Store store;
 
 	/**
 	 * Executes a non-streaming agent run for a given session and message.
@@ -155,20 +155,12 @@ public class ExecutionController {
 	@PostMapping(value = "/run_sse", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public Flux<ServerSentEvent<String>> agentRunSse(@RequestBody AgentRunRequest request) {
 		if (request.appName == null || request.appName.trim().isEmpty()) {
-			log.warn(
-					"appName cannot be null or empty in SSE request for appName: {}, session: {}",
-					request.appName,
-					request.threadId);
-			return Flux.error(
-					new ResponseStatusException(HttpStatus.BAD_REQUEST, "appName cannot be null or empty"));
+			log.warn("appName cannot be null or empty in SSE request for appName: {}, session: {}", request.appName, request.threadId);
+			return Flux.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "appName cannot be null or empty"));
 		}
 		if (request.threadId == null || request.threadId.trim().isEmpty()) {
-			log.warn(
-					"threadId cannot be null or empty in SSE request for appName: {}, session: {}",
-					request.appName,
-					request.threadId);
-			return Flux.error(
-					new ResponseStatusException(HttpStatus.BAD_REQUEST, "threadId cannot be null or empty"));
+			log.warn("threadId cannot be null or empty in SSE request for appName: {}, session: {}", request.appName, request.threadId);
+			return Flux.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "threadId cannot be null or empty"));
 		}
 
 		try {
@@ -189,20 +181,12 @@ public class ExecutionController {
 	@PostMapping(value = "/resume_sse", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public Flux<ServerSentEvent<String>> agentResumeSse(@RequestBody AgentResumeRequest request) {
 		if (request.appName == null || request.appName.trim().isEmpty()) {
-			log.warn(
-					"appName cannot be null or empty in SSE request for appName: {}, session: {}",
-					request.appName,
-					request.threadId);
-			return Flux.error(
-					new ResponseStatusException(HttpStatus.BAD_REQUEST, "appName cannot be null or empty"));
+			log.warn("appName cannot be null or empty in SSE request for appName: {}, session: {}", request.appName, request.threadId);
+			return Flux.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "appName cannot be null or empty"));
 		}
 		if (request.threadId == null || request.threadId.trim().isEmpty()) {
-			log.warn(
-					"threadId cannot be null or empty in SSE request for appName: {}, session: {}",
-					request.appName,
-					request.threadId);
-			return Flux.error(
-					new ResponseStatusException(HttpStatus.BAD_REQUEST, "threadId cannot be null or empty"));
+			log.warn("threadId cannot be null or empty in SSE request for appName: {}, session: {}", request.appName, request.threadId);
+			return Flux.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "threadId cannot be null or empty"));
 		}
 
 		try {
@@ -238,6 +222,11 @@ public class ExecutionController {
 					.addMetadata("user_id", request.userId)
 					.addHumanFeedback(metadataBuilder.build())
 					.build();
+			// resume 时 beforeAgent hook 不会重新执行，需要手动初始化 shell session
+			ShellSessionManager.builder()
+					.workspaceRoot(".workspace")
+					.build()
+					.initialize(runnableConfig);
 
 			return executeAgent(null, agent, runnableConfig);
 		}
@@ -265,9 +254,6 @@ public class ExecutionController {
 					String agentName = nodeOutput.agent();
 					Usage tokenUsage = nodeOutput.tokenUsage();
 
-
-					// For streaming, we can use the message content as chunk
-					StringBuilder chunkBuilder = new StringBuilder();
 					AgentRunResponse agentResponse = null;
 					if (nodeOutput instanceof StreamingOutput<?> streamingOutput) {
 						Message message = streamingOutput.message();
@@ -276,7 +262,6 @@ public class ExecutionController {
 									.data("{}")
 									.build();
                         }
-
 						if (message == null) { // no update, typically output responses from nodes that does not produce messages
 							return ServerSentEvent.<String>builder()
 									.data("{}")
@@ -287,7 +272,6 @@ public class ExecutionController {
 								agentResponse = new AgentRunResponse(node, agentName, assistantMessage, tokenUsage, "");
 							}
 							else {
-//						chunkBuilder.append(assistantMessage.getText());
 								agentResponse = new AgentRunResponse(node, agentName, assistantMessage, tokenUsage, assistantMessage.getText());
 							}
 						}
@@ -299,10 +283,6 @@ public class ExecutionController {
 						// Use the specialized method to convert InterruptionMetadata to ToolRequestMessageDTO
 						ToolRequestConfirmMessageDTO toolRequestMessage = MessageDTO.MessageDTOFactory.fromInterruptionMetadata(interruptionMetadata);
 						agentResponse = new AgentRunResponse(node, agentName, toolRequestMessage, tokenUsage, "");
-					}
-					else {
-						// Handle other NodeOutput types if necessary
-//					agentResponse = new AgentRunResponse(node, agentName, null, tokenUsage, "");
 					}
 
 
