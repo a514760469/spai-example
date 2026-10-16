@@ -1,4 +1,4 @@
-package ai.lifo.spai.example.component;
+package ai.lifo.spai.rag.etl;
 
 import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.markdown.MarkdownDocumentReader;

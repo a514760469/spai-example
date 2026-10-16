@@ -2,9 +2,36 @@ spring:
     ai:
         dashscope:
             api-key: ${AI_DASHSCOPE_API_KEY}
+            chat:
+                options:
+                    model: qwen3.8-max
+                    multi-model: true
+        mcp:
+            client:
+                enabled: true
+                toolcallback:
+                    enabled: true
+                streamable-http:
+                    connections:
+                       jina:
+                           url: "https://mcp.jina.ai"
+                           endpoint: "/sse"
     application:
         name: react-agent
+server:
+    servlet:
+        encoding:
+            force: true
+            force-request: true
+            force-response: true
+
 logging:
     level:
-        root: info
+        org.springframework.jdbc.core.JdbcTemplate: debug
+        org.springframework.ai: debug
+        com.alibaba.dashscope.api: debug
+        com.alibaba.cloud.ai.dashscope.chat: debug
+        # request url debug
+        org.springframework.web.client: debug
+        org.apache.hc.client5.http: debug
         org.springframework.ai.chat.client.advisor: DEBUG
