@@ -53,12 +53,12 @@ class NacosConfigToolServiceTest {
      */
     @Test
     void testGetConfig() {
-        var req = new GetConfigRequest(SERVER_ADDR, "jdd_config", "", "",
-                ACCESS_KEY, SECRET_KEY, "metric-monitor-client.yaml", "JDD_GROUP");
+        var req = new GetConfigRequest("localhost:8848", "public", "nacos", "nacos",
+                ACCESS_KEY, SECRET_KEY, "ff505f8b-de3e-46c1-8c23-222d94273e05-mcp-versions.json", "mcp-server-versions");
 
         String result = toolService.getConfig(req);
         System.out.println("===== getConfig 结果 =====");
-        System.out.println(result);
+        System.err.println(result);
     }
 
     /**
@@ -66,11 +66,10 @@ class NacosConfigToolServiceTest {
      */
     @Test
     void testListConfigs() {
-        var req = new ListConfigsRequest(SERVER_ADDR, NAMESPACE, "", "",
-                ACCESS_KEY, SECRET_KEY, TEST_GROUP, 1, 20);
+        var req = new ListConfigsRequest("localhost:8848", "public", "nacos", "nacos", ACCESS_KEY, SECRET_KEY, "mcp-tools", 1, 20);
         String result = toolService.listConfigs(req);
         System.out.println("===== listConfigs 结果 =====");
-        System.out.println(result);
+        System.err.println(result);
     }
 
     /**
@@ -82,6 +81,6 @@ class NacosConfigToolServiceTest {
                 ACCESS_KEY, SECRET_KEY, SEARCH_KEYWORD, TEST_GROUP, 1, 20);
         String result = toolService.searchConfig(req);
         System.out.println("===== searchConfig 结果 =====");
-        System.out.println(result);
+        System.err.println(result);
     }
 }

@@ -9,6 +9,7 @@ import com.alibaba.nacos.maintainer.client.config.ConfigMaintainerFactory;
 import com.alibaba.nacos.maintainer.client.config.ConfigMaintainerService;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.Properties;
@@ -31,10 +32,33 @@ public class NacosClientFactory {
     private final ConcurrentHashMap<String, ConfigMaintainerService> maintainerCache = new ConcurrentHashMap<>();
 
     /**
-     * SDK 负缓存：记录不支持 ConfigMaintainerService 的连接（如 Nacos 2.x / MSE）。
-     * 标记后后续调用直接跳过 SDK 路径，避免重复失败开销。
+     * SDK 负缓存默认有效期：5 分钟。到期后自动重新尝试 SDK，让服务端升级、网络恢复等情况能够自愈。
      */
-    private final ConcurrentHashMap<String, Boolean> maintainerUnsupportedCache = new ConcurrentHashMap<>();
+    private static final long DEFAULT_MAINTAINER_UNSUPPORTED_TTL_MS = 5 * 60 * 1000L;
+
+    /**
+     * 负缓存有效期（毫秒），可通过 {@code nacos.maintainer.unsupported-ttl-ms} 调整。
+     */
+    @Value("${nacos.maintainer.unsupported-ttl-ms:300000}")
+    private long maintainerUnsupportedTtlMs = DEFAULT_MAINTAINER_UNSUPPORTED_TTL_MS;
+
+    /**
+     * SDK 负缓存：记录「某个连接的某个请求」上一次被判定为不支持 ConfigMaintainerService（如 Nacos 2.x / MSE）。
+     * <p>
+     * 粒度是请求级（连接 + 操作 + 目标），不是连接级：查一条不存在的配置不该连累同连接上的列表与搜索。
+     * 条目带过期时间，到期即失效；任一次 SDK 调用成功会立即清除对应条目。
+     * </p>
+     */
+    private final ConcurrentHashMap<String, UnsupportedEntry> maintainerUnsupportedCache = new ConcurrentHashMap<>();
+
+    /**
+     * 负缓存条目，只保存过期时间戳。
+     */
+    private record UnsupportedEntry(long expireAt) {
+        boolean isExpired(long now) {
+            return now >= expireAt;
+        }
+    }
 
     /**
      * 根据连接信息获取或创建 ConfigService 实例。
@@ -93,31 +117,75 @@ public class NacosClientFactory {
     }
 
     /**
-     * 检查指定连接的 ConfigMaintainerService 是否可用（未被标记为不支持）。
+     * 检查指定连接上某个请求的 ConfigMaintainerService 是否可用（未被标记为不支持，或标记已过期）。
      *
-     * @param conn Nacos 连接信息
-     * @return true=支持 SDK 方式, false=已被标记为不支持
+     * @param conn  Nacos 连接信息
+     * @param scope 请求级标识，见 NacosConfigToolService 中的 getScope/listScope/searchScope
+     * @return true=支持 SDK 方式, false=该请求已被标记为不支持且未过期
      */
-    public boolean isMaintainerSupported(NacosConnectionInfo conn) {
-        return !maintainerUnsupportedCache.containsKey("maintainer:" + buildCacheKey(conn));
+    public boolean isMaintainerSupported(NacosConnectionInfo conn, String scope) {
+        String key = maintainerCacheKey(conn, scope);
+        UnsupportedEntry entry = maintainerUnsupportedCache.get(key);
+        if (entry == null) {
+            return true;
+        }
+        long now = System.currentTimeMillis();
+        if (entry.isExpired(now)) {
+            maintainerUnsupportedCache.remove(key, entry);
+            log.info("[NacosClientFactory] 负缓存已过期，重新尝试 ConfigMaintainerService, serverAddr={}, namespace={}, scope={}",
+                    conn.serverAddr(), conn.namespace(), scope);
+            return true;
+        }
+        return false;
     }
 
     /**
-     * 标记指定连接的 ConfigMaintainerService 为不可用。
-     * 后续调用 {@link #isMaintainerSupported} 将返回 false，直接跳过 SDK 路径。
+     * 标记指定连接上的某个请求不支持 ConfigMaintainerService。
+     * 该标记只影响同一连接 + 同一 scope，且带有效期，到期自动重新尝试。
      *
-     * @param conn Nacos 连接信息
+     * @param conn  Nacos 连接信息
+     * @param scope 请求级标识
      */
-    public void markMaintainerUnsupported(NacosConnectionInfo conn) {
-        maintainerUnsupportedCache.put("maintainer:" + buildCacheKey(conn), Boolean.TRUE);
-        log.info("[NacosClientFactory] 标记 ConfigMaintainerService 不可用, serverAddr={}, namespace={}",
-                conn.serverAddr(), conn.namespace());
+    public void markMaintainerUnsupported(NacosConnectionInfo conn, String scope) {
+        long now = System.currentTimeMillis();
+        maintainerUnsupportedCache.put(maintainerCacheKey(conn, scope), new UnsupportedEntry(now + maintainerUnsupportedTtlMs));
+        log.info("[NacosClientFactory] 标记 ConfigMaintainerService 不可用, serverAddr={}, namespace={}, scope={}, ttl={}ms",
+                conn.serverAddr(), conn.namespace(), scope, maintainerUnsupportedTtlMs);
+        purgeExpired(now);
     }
 
-    private static @NonNull Properties getProperties(NacosConnectionInfo conn) {
+    /**
+     * 清除指定连接上某个请求的负缓存标记。SDK 调用成功后调用，使系统可以自愈。
+     *
+     * @param conn  Nacos 连接信息
+     * @param scope 请求级标识
+     */
+    public void clearMaintainerUnsupported(NacosConnectionInfo conn, String scope) {
+        String key = maintainerCacheKey(conn, scope);
+        if (maintainerUnsupportedCache.remove(key) != null) {
+            log.info("[NacosClientFactory] 清除 ConfigMaintainerService 负缓存, serverAddr={}, namespace={}, scope={}",
+                    conn.serverAddr(), conn.namespace(), scope);
+        }
+    }
+
+    /**
+     * 清理已过期的负缓存条目，避免大量一次性请求把 map 撑大。
+     */
+    private void purgeExpired(long now) {
+        maintainerUnsupportedCache.entrySet().removeIf(e -> e.getValue().isExpired(now));
+    }
+
+    private String maintainerCacheKey(NacosConnectionInfo conn, String scope) {
+        return "maintainer:" + buildCacheKey(conn) + ":" + nullToEmpty(scope);
+    }
+
+    @NonNull
+    private static Properties getProperties(NacosConnectionInfo conn) {
         Properties properties = new Properties();
         properties.put(PropertyKeyConst.SERVER_ADDR, conn.serverAddr());
-        if (isNotBlank(conn.namespace())) {
+        // 默认命名空间（空 / public）不设置 NAMESPACE：
+        // 2.x 客户端的默认命名空间 id 是空串，传 "public" 会被当成名为 public 的命名空间
+        if (isExplicitNamespace(conn.namespace())) {
             properties.put(PropertyKeyConst.NAMESPACE, conn.namespace());
         }
         // 用户名/密码 鉴权
@@ -157,6 +225,13 @@ public class NacosClientFactory {
 
     private static boolean isNotBlank(String s) {
         return s != null && !s.isBlank();
+    }
+
+    /**
+     * 是否为显式指定的命名空间（空串 / "public" 均视为默认命名空间）。
+     */
+    private static boolean isExplicitNamespace(String namespace) {
+        return isNotBlank(namespace) && !"public".equalsIgnoreCase(namespace);
     }
 
     private static String nullToEmpty(String s) {

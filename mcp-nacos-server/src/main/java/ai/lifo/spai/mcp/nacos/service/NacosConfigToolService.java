@@ -72,6 +72,10 @@ public class NacosConfigToolService {
 
     @Tool(description = "Get the content of a specific Nacos configuration by dataId and group.")
     public String getConfig(GetConfigRequest req) {
+
+        log.info("[MCP Tool] 获取配置内容, serverAddr={}, namespace={}, dataId={}, group={}",
+                req.serverAddr(), req.namespace(), req.dataId(), req.group());
+
         var conn = new NacosConnectionInfo(req.serverAddr(),
                 req.namespace(),
                 req.username(),
@@ -79,34 +83,38 @@ public class NacosConfigToolService {
                 req.accessKey(),
                 req.secretKey());
 
-        log.info("[MCP Tool] 获取配置内容, serverAddr={}, namespace={}, dataId={}, group={}",
-                req.serverAddr(), req.namespace(), req.dataId(), req.group());
-
         // 优先尝试 SDK 方式（ConfigMaintainerService）
-        if (nacosClientFactory.isMaintainerSupported(conn)) {
+        // 负缓存粒度为请求级：查某条配置失败只影响这条配置，不影响同连接上的列表/搜索
+        String sdkScope = getScope(req.group(), req.dataId());
+        if (nacosClientFactory.isMaintainerSupported(conn, sdkScope)) {
             try {
-                return getConfigViaMaintainer(conn, req.dataId(), req.group());
+                String content = getConfigViaMaintainer(conn, req.dataId(), req.group());
+                nacosClientFactory.clearMaintainerUnsupported(conn, sdkScope);
+                return content;
             } catch (Exception e) {
-                nacosClientFactory.markMaintainerUnsupported(conn);
+                nacosClientFactory.markMaintainerUnsupported(conn, sdkScope);
                 log.warn("[MCP Tool] SDK 方式获取配置失败, 回退到基础方式, dataId={}, group={}, error={}",
                         req.dataId(), req.group(), e.getMessage());
             }
         }
 
-        // 回退到 ConfigService 基础方式
+        // 回退 1：ConfigService 基础方式
+        // 注意：3.x 客户端对 2.x 服务端会直接返回 null（不是抛异常），不能用 null 判定“配置不存在”
         try {
             ConfigService configService = nacosClientFactory.getConfigService(conn);
             String content = configService.getConfig(req.dataId(), req.group(), 5000);
-            if (content == null) {
-                log.warn("[MCP Tool] 配置未找到, dataId={}, group={}, namespace={}", req.dataId(), req.group(), req.namespace());
-                return String.format("Config not found: dataId=%s, group=%s, namespace=%s", req.dataId(), req.group(), req.namespace());
+            if (content != null) {
+                log.info("[MCP Tool] 配置获取成功（ConfigService）, dataId={}, group={}, 内容长度={}", req.dataId(), req.group(), content.length());
+                return content;
             }
-            log.info("[MCP Tool] 配置获取成功（基础方式）, dataId={}, group={}, 内容长度={}", req.dataId(), req.group(), content.length());
-            return content;
+            log.warn("[MCP Tool] ConfigService 返回 null，改用 HTTP 方式确认, dataId={}, group={}", req.dataId(), req.group());
         } catch (Exception e) {
-            log.error("[MCP Tool] 获取配置失败, dataId={}, group={}, serverAddr={}", req.dataId(), req.group(), req.serverAddr(), e);
-            return "Error: " + e.getMessage();
+            log.warn("[MCP Tool] ConfigService 方式异常，改用 HTTP 方式, dataId={}, group={}, error={}",
+                    req.dataId(), req.group(), e.getMessage());
         }
+
+        // 回退 2：v1 HTTP，兼容 2.x 服务端，且能区分“配置不存在”与“接口/鉴权异常”
+        return getConfigViaHttp(conn, req.dataId(), req.group());
     }
 
     // ======================== Tool: listConfigs ========================
@@ -123,23 +131,27 @@ public class NacosConfigToolService {
                 req.accessKey(),
                 req.secretKey());
 
-        // 优先尝试 SDK 方式
-        if (nacosClientFactory.isMaintainerSupported(conn)) {
+        // 优先尝试 SDK 方式（请求级负缓存）
+        String sdkScope = listScope(req.group());
+        if (nacosClientFactory.isMaintainerSupported(conn, sdkScope)) {
             try {
-                return listConfigsViaMaintainer(conn, req.group(), req.pageNo(), req.pageSize());
+                String result = listConfigsViaMaintainer(conn, req.group(), req.pageNo(), req.pageSize());
+                nacosClientFactory.clearMaintainerUnsupported(conn, sdkScope);
+                return result;
             } catch (Exception e) {
-                nacosClientFactory.markMaintainerUnsupported(conn);
+                nacosClientFactory.markMaintainerUnsupported(conn, sdkScope);
                 log.warn("[MCP Tool] SDK 方式列出配置失败, 回退到 HTTP 方式, group={}, error={}", req.group(), e.getMessage());
             }
         }
 
-        // 回退到 HTTP 方式
-        try {
-            return queryConfigs(conn, req.group(), "", "accurate", req.pageNo(), req.pageSize());
-        } catch (Exception e) {
-            log.error("[MCP Tool] HTTP 方式列出配置也失败, group={}, serverAddr={}", req.group(), req.serverAddr(), e);
-            return "Error: " + e.getMessage();
+        // 回退 1：v3 admin HTTP（Nacos 3.x；v1 的列表/搜索接口在 3.x 上已下线，返回 410）
+        String v3Result = queryConfigsViaV3(conn, req.group(), "", "accurate", req.pageNo(), req.pageSize());
+        if (v3Result != null) {
+            return v3Result;
         }
+
+        // 回退 2：v1 HTTP（Nacos 2.x）
+        return queryConfigs(conn, req.group(), "", "accurate", req.pageNo(), req.pageSize());
     }
 
     // ======================== Tool: searchConfig ========================
@@ -157,24 +169,30 @@ public class NacosConfigToolService {
                 req.secretKey());
 
         String search = req.search() == null ? "" : req.search();
+        // v1 模糊搜索必须显式带通配符，裸关键字在 2.x 服务端匹配不到任何结果
+        String pattern = blurPattern(search);
 
-        // 优先尝试 SDK 方式
-        if (nacosClientFactory.isMaintainerSupported(conn)) {
+        // 优先尝试 SDK 方式（请求级负缓存）
+        String sdkScope = searchScope(req.group(), pattern);
+        if (nacosClientFactory.isMaintainerSupported(conn, sdkScope)) {
             try {
-                return searchConfigViaMaintainer(conn, req.group(), search, req.pageNo(), req.pageSize());
+                String result = searchConfigViaMaintainer(conn, req.group(), pattern, req.pageNo(), req.pageSize());
+                nacosClientFactory.clearMaintainerUnsupported(conn, sdkScope);
+                return result;
             } catch (Exception e) {
-                nacosClientFactory.markMaintainerUnsupported(conn);
+                nacosClientFactory.markMaintainerUnsupported(conn, sdkScope);
                 log.warn("[MCP Tool] SDK 方式搜索配置失败, 回退到 HTTP 方式, search={}, error={}", search, e.getMessage());
             }
         }
 
-        // 回退到 HTTP 方式
-        try {
-            return queryConfigs(conn, req.group(), search, "blur", req.pageNo(), req.pageSize());
-        } catch (Exception e) {
-            log.error("[MCP Tool] HTTP 方式搜索配置也失败, search={}, serverAddr={}", search, req.serverAddr(), e);
-            return "Error: " + e.getMessage();
+        // 回退 1：v3 admin HTTP（Nacos 3.x；v1 的列表/搜索接口在 3.x 上已下线，返回 410）
+        String v3Result = queryConfigsViaV3(conn, req.group(), pattern, "blur", req.pageNo(), req.pageSize());
+        if (v3Result != null) {
+            return v3Result;
         }
+
+        // 回退 2：v1 HTTP（Nacos 2.x）
+        return queryConfigs(conn, req.group(), pattern, "blur", req.pageNo(), req.pageSize());
     }
 
     // ======================== SDK 方式（nacos-maintainer-client）========================
@@ -185,9 +203,9 @@ public class NacosConfigToolService {
      */
     private String getConfigViaMaintainer(NacosConnectionInfo conn, String dataId, String group) throws Exception {
         var maintainer = nacosClientFactory.getConfigMaintainerService(conn);
-        String namespace = normalizeNamespace(conn.namespace());
-        log.info("[MCP Tool/SDK] 调用 getConfig, namespace={}, dataId={}, group={}", namespace, dataId, group);
-        ConfigDetailInfo detail = maintainer.getConfig(namespace, dataId, group);
+        String namespace = namespaceForV3(conn.namespace());
+        log.info("[MCP Tool/SDK] 调用 getConfig, namespaceId={}, dataId={}, group={}", namespace, dataId, group);
+        ConfigDetailInfo detail = maintainer.getConfig(dataId, group, namespace);
         if (detail == null || detail.getContent() == null) {
             log.warn("[MCP Tool/SDK] 配置未找到, dataId={}, group={}, namespace={}", dataId, group, namespace);
             return String.format("Config not found: dataId=%s, group=%s, namespace=%s", dataId, group, namespace);
@@ -202,9 +220,9 @@ public class NacosConfigToolService {
      */
     private String listConfigsViaMaintainer(NacosConnectionInfo conn, String group, int pageNo, int pageSize) throws Exception {
         var maintainer = nacosClientFactory.getConfigMaintainerService(conn);
-        String namespace = normalizeNamespace(conn.namespace());
-        log.info("[MCP Tool/SDK] 调用 listConfigs, namespace={}, group={}, pageNo={}, pageSize={}", namespace, group, pageNo, pageSize);
-        Page<ConfigBasicInfo> page = maintainer.listConfigs(namespace, group, "", "", "", "", pageNo, pageSize);
+        String namespace = namespaceForV3(conn.namespace());
+        log.info("[MCP Tool/SDK] 调用 listConfigs, namespaceId={}, group={}, pageNo={}, pageSize={}", namespace, group, pageNo, pageSize);
+        Page<ConfigBasicInfo> page = maintainer.listConfigs("", group, namespace, "", "", "", pageNo, pageSize);
         log.info("[MCP Tool/SDK] listConfigs 成功, 总数={}, 当前页条数={}", page.getTotalCount(), page.getPageItems().size());
         return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(page);
     }
@@ -215,14 +233,194 @@ public class NacosConfigToolService {
      */
     private String searchConfigViaMaintainer(NacosConnectionInfo conn, String group, String search, int pageNo, int pageSize) throws Exception {
         var maintainer = nacosClientFactory.getConfigMaintainerService(conn);
-        String namespace = normalizeNamespace(conn.namespace());
-        log.info("[MCP Tool/SDK] 调用 searchConfigs, namespace={}, group={}, search={}, pageNo={}, pageSize={}", namespace, group, search, pageNo, pageSize);
-        Page<ConfigBasicInfo> page = maintainer.searchConfigs(namespace, group, search, "", "", "", "", pageNo, pageSize);
+        String namespace = namespaceForV3(conn.namespace());
+        log.info("[MCP Tool/SDK] 调用 searchConfigs, namespaceId={}, group={}, search={}, pageNo={}, pageSize={}", namespace, group, search, pageNo, pageSize);
+        Page<ConfigBasicInfo> page = maintainer.searchConfigs(search, group, namespace, "", "", "", "", pageNo, pageSize);
         log.info("[MCP Tool/SDK] searchConfigs 成功, 总数={}, 当前页条数={}", page.getTotalCount(), page.getPageItems().size());
         return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(page);
     }
 
     // ======================== Internal Helpers（旧 HTTP 方式）========================
+
+    /**
+     * v1 / HTTP / 2.x 语义：默认命名空间必须用空串。
+     * 传 "public" 会被当成一个名为 public 的命名空间，列表查询会直接返回空结果。
+     */
+    private String tenantForHttp(String namespace) {
+        if (namespace == null || namespace.isBlank() || "public".equalsIgnoreCase(namespace)) {
+            return "";
+        }
+        return namespace;
+    }
+
+    /**
+     * v3 admin（nacos-maintainer-client）语义：默认命名空间的 namespaceId 是 "public"。
+     */
+    private String namespaceForV3(String namespace) {
+        if (namespace == null || namespace.isBlank() || "public".equalsIgnoreCase(namespace)) {
+            return "public";
+        }
+        return namespace;
+    }
+
+    /**
+     * v1 模糊搜索必须显式带通配符，裸关键字在 2.x 服务端匹配不到任何结果。
+     */
+    private String blurPattern(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return "*";
+        }
+        return keyword.contains("*") ? keyword : "*" + keyword + "*";
+    }
+
+    // ======================== 负缓存 scope（请求级）========================
+
+    /**
+     * getConfig 的 scope：group + dataId。查某条配置失败不会连累其它 dataId。
+     */
+    private static String getScope(String group, String dataId) {
+        return "get:" + nullToEmpty(group) + ":" + nullToEmpty(dataId);
+    }
+
+    /**
+     * listConfigs 的 scope：group。分页参数不影响「接口是否可用」这个结论，故不拆。
+     */
+    private static String listScope(String group) {
+        return "list:" + nullToEmpty(group);
+    }
+
+    /**
+     * searchConfig 的 scope：group + 通配符模式。
+     */
+    private static String searchScope(String group, String pattern) {
+        return "search:" + nullToEmpty(group) + ":" + nullToEmpty(pattern);
+    }
+
+    private static String nullToEmpty(String s) {
+        return s == null ? "" : s;
+    }
+
+    /**
+     * 通过 v1 HTTP 接口获取配置原文。
+     * <p>
+     * 兼容 Nacos 2.x 服务端（3.x 客户端的 ConfigService 在 2.x 服务端上恒返回 null），
+     * 并能明确区分“配置不存在（404）”与“接口/鉴权异常”。
+     * 直接返回裸响应体，不做 JSON 美化，避免改写用户配置的原始文本。
+     * </p>
+     */
+    private String getConfigViaHttp(NacosConnectionInfo conn, String dataId, String group) {
+        try {
+            String baseUrl = buildBaseUrl(conn.serverAddr());
+            StringBuilder url = new StringBuilder(baseUrl)
+                    .append("/nacos/v1/cs/configs?dataId=").append(encode(dataId == null ? "" : dataId))
+                    .append("&group=").append(encode(group == null ? "" : group))
+                    .append("&tenant=").append(encode(tenantForHttp(conn.namespace())));
+
+            String accessToken = getAccessToken(conn);
+            if (isNotBlank(accessToken)) {
+                url.append("&accessToken=").append(encode(accessToken));
+            }
+
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                    .uri(URI.create(url.toString()))
+                    .GET()
+                    .timeout(Duration.ofSeconds(10));
+            addAkSkHeaders(requestBuilder, "GET", "/nacos/v1/cs/configs", "", conn);
+
+            HttpResponse<String> response = httpClient.send(requestBuilder.build(),
+                    HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() == 200) {
+                String content = response.body();
+                log.info("[MCP Tool/HTTP] 配置获取成功, dataId={}, group={}, 内容长度={}",
+                        dataId, group, content == null ? 0 : content.length());
+                return content;
+            }
+            if (response.statusCode() == 404) {
+                log.warn("[MCP Tool/HTTP] 配置未找到, dataId={}, group={}, namespace={}", dataId, group, conn.namespace());
+                return String.format("Config not found: dataId=%s, group=%s, namespace=%s",
+                        dataId, group, conn.namespace());
+            }
+            log.error("[MCP Tool/HTTP] 获取配置失败, status={}, body={}", response.statusCode(), response.body());
+            return String.format("Error: HTTP %d: %s", response.statusCode(), response.body());
+        } catch (Exception e) {
+            log.error("[MCP Tool/HTTP] 获取配置异常, dataId={}, group={}, serverAddr={}",
+                    dataId, group, conn.serverAddr(), e);
+            return "Error: " + e.getMessage();
+        }
+    }
+
+    /**
+     * 配置查询公共方法（v3 admin 接口），listConfigs 和 searchConfig 共用。
+     * <p>
+     * Nacos 3.x 将 v1 的 {@code /nacos/v1/cs/configs?search=...} 下线（返回 410 Gone），
+     * 列表/搜索需要改走 {@code /nacos/v3/admin/cs/config/list}，鉴权用 accessToken 请求头。
+     * </p>
+     *
+     * @param searchType accurate=精确匹配, blur=模糊匹配
+     * @param dataId     搜索关键字（accurate 时为空，blur 时需带通配符）
+     * @return 查询结果；若对端不支持 v3 接口（404/410）或请求异常则返回 null，由调用方回退到 v1
+     */
+    private String queryConfigsViaV3(NacosConnectionInfo conn,
+                                     String group,
+                                     String dataId,
+                                     String searchType,
+                                     int pageNo,
+                                     int pageSize) {
+        try {
+            String baseUrl = buildBaseUrl(conn.serverAddr());
+            StringBuilder url = new StringBuilder(baseUrl)
+                    .append("/nacos/v3/admin/cs/config/list")
+                    .append("?pageNo=").append(pageNo)
+                    .append("&pageSize=").append(pageSize)
+                    .append("&namespaceId=").append(encode(namespaceForV3(conn.namespace())))
+                    .append("&groupName=").append(encode(group == null ? "" : group))
+                    .append("&dataId=").append(encode(dataId == null ? "" : dataId))
+                    .append("&search=").append(searchType);
+
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                    .uri(URI.create(url.toString()))
+                    .GET()
+                    .timeout(Duration.ofSeconds(10));
+
+            String accessToken = getAccessToken(conn);
+            if (isNotBlank(accessToken)) {
+                requestBuilder.header("accessToken", accessToken);
+            }
+            addAkSkHeaders(requestBuilder, "GET", "/nacos/v3/admin/cs/config/list", "", conn);
+
+            HttpResponse<String> response = httpClient.send(requestBuilder.build(),
+                    HttpResponse.BodyHandlers.ofString());
+
+            // 2.x 服务端没有 v3 接口，交由调用方回退 v1
+            if (response.statusCode() == 404 || response.statusCode() == 410) {
+                log.debug("[MCP Tool/v3] v3 接口不可用(status={}), 回退 v1, serverAddr={}",
+                        response.statusCode(), conn.serverAddr());
+                return null;
+            }
+            if (response.statusCode() != 200) {
+                log.warn("[MCP Tool/v3] 请求失败, status={}, body={}", response.statusCode(), response.body());
+                return String.format("Error: HTTP %d: %s", response.statusCode(), response.body());
+            }
+
+            JsonNode root = objectMapper.readTree(response.body());
+            int code = root.path("code").asInt(-1);
+            if (code != 0) {
+                log.warn("[MCP Tool/v3] 业务失败, code={}, message={}", code, root.path("message").asText());
+                return String.format("Error: v3 code=%d, message=%s", code, root.path("message").asText());
+            }
+
+            // 只返回 data 节点，与 v1 的响应结构（totalCount/pageItems 在顶层）保持一致
+            JsonNode data = root.path("data");
+            log.info("[MCP Tool/v3] 配置查询成功, searchType={}, group={}, 总数={}",
+                    searchType, group, data.path("totalCount").asInt());
+            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(data);
+        } catch (Exception e) {
+            log.warn("[MCP Tool/v3] 查询异常, 回退 v1, searchType={}, group={}, serverAddr={}",
+                    searchType, group, conn.serverAddr(), e);
+            return null;
+        }
+    }
 
     /**
      * 配置查询公共方法，listConfigs 和 searchConfig 共用。
@@ -238,7 +436,7 @@ public class NacosConfigToolService {
                                 int pageSize) {
         try {
             String baseUrl = buildBaseUrl(conn.serverAddr());
-            String tenant = normalizeNamespace(conn.namespace());
+            String tenant = tenantForHttp(conn.namespace());
             String accessToken = getAccessToken(conn);
 
             StringBuilder url = new StringBuilder(baseUrl)
