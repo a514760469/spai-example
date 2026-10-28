@@ -37,10 +37,12 @@ public class VectorStoreConfiguration {
      * @see org.springframework.ai.vectorstore.neo4j.autoconfigure.Neo4jVectorStoreAutoConfiguration
      */
     @Bean
-    public Neo4jVectorStore neo4jVectorStore(Driver driver, EmbeddingModel embeddingModel,
-                                        Neo4jVectorStoreProperties properties, ObjectProvider<ObservationRegistry> observationRegistry,
-                                        ObjectProvider<VectorStoreObservationConvention> customObservationConvention,
-                                        BatchingStrategy batchingStrategy) {
+    public Neo4jVectorStore neo4jVectorStore(Driver driver,
+                                             EmbeddingModel embeddingModel,
+                                             Neo4jVectorStoreProperties properties,
+                                             ObjectProvider<ObservationRegistry> observationRegistry,
+                                             ObjectProvider<VectorStoreObservationConvention> customObservationConvention,
+                                             BatchingStrategy batchingStrategy) {
 
         return Neo4jVectorStore.builder(driver, embeddingModel)
                 .initializeSchema(properties.isInitializeSchema())

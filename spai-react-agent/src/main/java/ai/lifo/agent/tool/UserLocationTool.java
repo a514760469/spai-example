@@ -10,7 +10,7 @@ import java.util.function.BiFunction;
 import static com.alibaba.cloud.ai.graph.agent.tools.ToolContextConstants.AGENT_CONFIG_CONTEXT_KEY;
 
 /**
- * 用户位置工具
+ * 用户位置工具 模拟
  * @author zhanglifeng
  * @since 2026-01-15
  */

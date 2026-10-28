@@ -168,6 +168,7 @@ public class ExecutionController {
 			RunnableConfig runnableConfig = RunnableConfig.builder()
 					.threadId(request.threadId)
 					.addMetadata("user_id", request.userId)
+					.store(store)
 					.build();
 
 			return executeAgent(request.newMessage.toUserMessage(), agent, runnableConfig);
@@ -221,7 +222,9 @@ public class ExecutionController {
 					.threadId(request.threadId)
 					.addMetadata("user_id", request.userId)
 					.addHumanFeedback(metadataBuilder.build())
+					.store(store)
 					.build();
+
 			// resume 时 beforeAgent hook 不会重新执行，需要手动初始化 shell session
 			ShellSessionManager.builder()
 					.workspaceRoot(".workspace")

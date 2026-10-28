@@ -1,5 +1,6 @@
 package ai.lifo.agent.controller;
 
+import ai.lifo.agent.support.AgentStreamErrors;
 import com.alibaba.cloud.ai.graph.agent.ReactAgent;
 import com.alibaba.cloud.ai.graph.exception.GraphRunnerException;
 import com.alibaba.cloud.ai.graph.streaming.OutputType;
@@ -40,7 +41,7 @@ public class ReactAgentController {
         AtomicBoolean thinkingStart = new AtomicBoolean(false);
         AtomicBoolean thinkingEnd = new AtomicBoolean(false);
 
-        return agent.stream(question).map(nodeOutput -> {
+        return AgentStreamErrors.guard(agent.stream(question).map(nodeOutput -> {
             if (nodeOutput instanceof StreamingOutput<?> streamingOutput) {
                 OutputType outputType = streamingOutput.getOutputType();
                 if (OutputType.AGENT_MODEL_STREAMING.equals(outputType)) {
@@ -64,6 +65,6 @@ public class ReactAgentController {
                 }
             }
             return "";
-        });
+        }), AgentStreamErrors::describe);
     }
 }

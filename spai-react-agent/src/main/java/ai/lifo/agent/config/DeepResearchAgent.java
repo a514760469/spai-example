@@ -12,15 +12,14 @@ import com.alibaba.cloud.ai.graph.agent.interceptor.Interceptor;
 import com.alibaba.cloud.ai.graph.agent.interceptor.contextediting.ContextEditingInterceptor;
 import com.alibaba.cloud.ai.graph.agent.interceptor.todolist.TodoListInterceptor;
 import com.alibaba.cloud.ai.graph.agent.interceptor.toolretry.ToolRetryInterceptor;
-import com.alibaba.cloud.ai.graph.checkpoint.savers.MemorySaver;
+import com.alibaba.cloud.ai.graph.checkpoint.savers.mysql.MysqlSaver;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import javax.sql.DataSource;
 import java.util.List;
-
-import static ai.lifo.agent.config.DeepResearchAgent.Prompts.subCritiquePrompt;
 
 /**
  * @author zhanglifeng
@@ -104,23 +103,26 @@ public class DeepResearchAgent {
 
     }
 
-    private static SubAgentSpec createCritiqueAgent(String subCritiquePrompt) {
+    private static SubAgentSpec createCritiqueAgent() {
         return SubAgentSpec.builder()
                 .name("critique-agent")
-                .description("Used to critique the final report. Provide information about " +
-                        "how you want the report to be critiqued.")
-                .systemPrompt(subCritiquePrompt)
+                .description("""
+						Used to critique the final report. Provide information about how you want the report to be critiqued.
+						""")
+                .systemPrompt(Prompts.subCritiquePrompt)
                 .enableLoopingLog(true)
                 .build();
     }
 
-    private static SubAgentSpec createResearchAgent(List<ToolCallback> toolsFromMcp, String subResearchPrompt) {
+    private static SubAgentSpec createResearchAgent(List<ToolCallback> toolsFromMcp) {
         return SubAgentSpec.builder()
                 .name("research-agent")
-                .description("Used to research in-depth questions. Only give one topic at a time. " +
-                        "Break down large topics into components and call multiple research agents " +
-                        "in parallel for each sub-question.")
-                .systemPrompt(subResearchPrompt)
+                .description("""
+                        Used to research in-depth questions. Only give one topic at a time.
+                        Break down large topics into components and call multiple research agents
+                        in parallel for each sub-question.
+                        """)
+                .systemPrompt(Prompts.subResearchPrompt)
                 .tools(toolsFromMcp)
                 .enableLoopingLog(true)
                 .build();
@@ -128,8 +130,13 @@ public class DeepResearchAgent {
 
 
 	@Bean
-    public ReactAgent getResearchAgent(List<ToolCallback> toolsFromMcp) {
+    public ReactAgent getResearchAgent(List<ToolCallback> toolsFromMcp, DataSource dataSource) {
         // Build the ReactAgent with all interceptors
+
+		MysqlSaver mysqlSaver = MysqlSaver.builder()
+				.dataSource(dataSource)
+				.build();
+
         return ReactAgent.builder()
                 .name("DeepResearchAgent")
                 .model(chatModel)
@@ -144,14 +151,14 @@ public class DeepResearchAgent {
                         toolRetryInterceptor,
                         subAgentAsInterceptors(toolsFromMcp))
                 .hooks(humanInTheLoopHook, summarizationHook, toolCallLimitHook)
-                .saver(new MemorySaver())
+                .saver(mysqlSaver)
                 .build();
 
     }
 
     private Interceptor subAgentAsInterceptors(List<ToolCallback> toolsFromMcp) {
-        SubAgentSpec researchAgent = createResearchAgent(toolsFromMcp, Prompts.subResearchPrompt);
-        SubAgentSpec critiqueAgent = createCritiqueAgent(subCritiquePrompt);
+        SubAgentSpec researchAgent = createResearchAgent(toolsFromMcp);
+        SubAgentSpec critiqueAgent = createCritiqueAgent();
 
         SubAgentInterceptor.Builder subAgentBuilder = SubAgentInterceptor.builder()
                 .defaultModel(chatModel)

@@ -4,6 +4,8 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.agent.hook.HookPosition;
 import com.alibaba.cloud.ai.graph.agent.hook.ModelHook;
+import com.alibaba.fastjson.JSON;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Map;
@@ -13,6 +15,7 @@ import java.util.concurrent.CompletableFuture;
  * @author zhanglifeng
  * @since 2026-10-16
  */
+@Slf4j
 public class LoggingHook extends ModelHook {
 
     @Override
@@ -24,14 +27,14 @@ public class LoggingHook extends ModelHook {
     public CompletableFuture<Map<String, Object>> beforeModel(OverAllState state, RunnableConfig config) {
         // 在模型调用前记录
         List<?> messages = (List<?>) state.value("messages").orElse(List.of());
-        System.out.println("模型调用前 - 消息数: " + messages.size());
+        log.info("调用前state {}", JSON.toJSONString(state));
         return CompletableFuture.completedFuture(Map.of());
     }
 
     @Override
     public CompletableFuture<Map<String, Object>> afterModel(OverAllState state, RunnableConfig config) {
         // 在模型调用后记录
-        System.out.println("模型调用后 - 响应已生成");
+        log.info("调用后state {}", JSON.toJSONString(state));
         return CompletableFuture.completedFuture(Map.of());
     }
 
