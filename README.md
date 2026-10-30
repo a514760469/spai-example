@@ -21,7 +21,7 @@ Spring AI / Spring AI Alibaba 与 LangChain4j 的 Java 示例集合，采用 Mav
 | [`mcp-client-web/`](./mcp-client-web/README.md) | MCP 客户端 Web 配置示例：提供 MCP Router 相关依赖以及管理 MCP 配置的 Web 控制器；包含 `configRequests.http` 请求示例。 |
 | [`mcp-filesystem/`](./mcp-filesystem/README.md) | MCP 文件系统客户端示例：使用 Spring AI MCP Client 与 DashScope，并包含文件系统和 GitHub 工具相关示例代码。 |
 | [`mcp-gateway/`](./mcp-gateway/README.md) | MCP Gateway 示例：使用 Spring AI Alibaba MCP Gateway 聚合 MCP 服务，并提供 Gateway 控制器示例。 |
-| [`mcp-nacos-server/`](./mcp-nacos-server/README.md) | Nacos MCP 服务示例：基于 Spring AI MCP Server 与 Nacos，提供 Nacos 配置查询相关 MCP 工具。 |
+| ~~`mcp-nacos-server/`~~ | 已迁出为独立工程：`~/IdeaProjects/mcp-nacos-server`（基于 Spring AI MCP Server 的 Nacos 配置读取服务） |
 | [`mcp-web-client/`](./mcp-web-client/README.md) | MCP Web 客户端模块（骨架）：当前模块仅包含 Maven 描述和基础配置，源码及依赖尚未添加。 |
 | [`multi-model/`](./multi-model/README.md) | 多模态模型示例：基于 Spring AI OpenAI 模型 starter 提供多模态 Web 示例，并包含视频帧提取辅助代码。 |
 | [`rag-example/`](./rag-example/README.md) | Spring AI RAG 示例：包含文档读取、向量存储和检索增强生成示例，依赖涵盖 Neo4j、Redis、PgVector、Elasticsearch、Qdrant 等向量存储集成。 |

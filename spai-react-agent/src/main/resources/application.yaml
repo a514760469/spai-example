@@ -7,12 +7,21 @@ spring:
         username: root
         password: 123456
     ai:
+        alibaba:
+            a2a:
+                server:
+                    card:
+                        name: data_analysis_agent
+                        description: 专门用于数据分析和统计计算的本地智能体
+                        provider:
+                            name: Spring AI Alibaba Documentation
+                            organization: Spring AI Alibaba
         vectorstore:
-          elasticsearch:
-              initialize-schema: true
-              index-name: spai-index
-              similarity: cosine
-              dimensions: 1024
+            elasticsearch:
+                initialize-schema: true
+                index-name: spai-index
+                similarity: cosine
+                dimensions: 1024
         dashscope:
             api-key: ${AI_DASHSCOPE_API_KEY}
             chat:

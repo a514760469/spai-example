@@ -25,11 +25,12 @@ public class OutputUtil {
         OutputType outputType = streamingOutput.getOutputType();
         if (OutputType.AGENT_MODEL_STREAMING.equals(outputType)) {
             Message message = streamingOutput.message();
-            String id = message.getMetadata().get("id").toString();
-            if (id == null) {
-                log.warn("模型输出？ id is null");
+            if (message.getMetadata().get("id") == null) {
+                log.error("模型输出？ id is null");
                 return "";
             }
+
+            String id = message.getMetadata().get("id").toString();
             // 插入start
             Boolean start = thinkingStartMap.get(id);
 //            Boolean start = thinkingStartMap.computeIfAbsent(id, k -> false);

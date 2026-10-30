@@ -1,6 +1,5 @@
 package ai.lifo.agent;
 
-import com.alibaba.cloud.ai.agent.studio.controller.ExecutionController;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.event.ApplicationReadyEvent;

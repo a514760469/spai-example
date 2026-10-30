@@ -19,7 +19,6 @@
         <module>mcp-client-web</module>
         <module>mcp-gateway</module>
         <module>multi-model</module>
-        <module>mcp-nacos-server</module>
         <module>mcp-baidu-mcp-server</module>
         <module>chat-example</module>
         <module>mcp-web-client</module>
