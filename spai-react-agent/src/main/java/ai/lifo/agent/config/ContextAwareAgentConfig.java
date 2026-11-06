@@ -5,7 +5,6 @@ import com.alibaba.cloud.ai.graph.agent.interceptor.ModelCallHandler;
 import com.alibaba.cloud.ai.graph.agent.interceptor.ModelInterceptor;
 import com.alibaba.cloud.ai.graph.agent.interceptor.ModelRequest;
 import com.alibaba.cloud.ai.graph.agent.interceptor.ModelResponse;
-import lombok.Getter;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.model.ChatModel;
@@ -88,21 +87,6 @@ public class ContextAwareAgentConfig {
         public void savePreferences(String userId, UserPreferences prefs) {
             store.put(userId, prefs);
         }
-    }
-
-    // 用户偏好类
-    @Getter
-    static class UserPreferences {
-        private final String communicationStyle;
-        private final String language;
-        private final List<String> interests;
-
-        public UserPreferences(String style, String lang, List<String> interests) {
-            this.communicationStyle = style;
-            this.language = lang;
-            this.interests = interests;
-        }
-
     }
 
     /**

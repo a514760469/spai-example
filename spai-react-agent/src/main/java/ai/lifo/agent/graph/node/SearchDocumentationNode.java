@@ -1,5 +1,6 @@
-package ai.lifo.agent.graph;
+package ai.lifo.agent.graph.node;
 
+import ai.lifo.agent.graph.EmailClassification;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
 import lombok.extern.slf4j.Slf4j;
@@ -8,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
+ * 文档搜索节点
  * @author zhanglifeng
  * @since 2026-10-28
  */

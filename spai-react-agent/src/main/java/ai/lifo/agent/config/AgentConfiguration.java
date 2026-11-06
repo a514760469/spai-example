@@ -17,12 +17,8 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.function.FunctionToolCallback;
 import org.springframework.ai.vectorstore.elasticsearch.ElasticsearchVectorStore;
-import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.support.BeanDefinitionRegistry;
-import org.springframework.beans.factory.support.BeanDefinitionRegistryPostProcessor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import javax.sql.DataSource;
@@ -37,16 +33,7 @@ public class AgentConfiguration {
 
     private final DataSource dataSource;
 
-    @Component
-    static class ExcludeBeanDefinitionPostProcessor implements BeanDefinitionRegistryPostProcessor {
-
-        // 使用自己的executionController，需要排除默认的 executionController
-        @Override
-        public void postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry) throws BeansException {
-            registry.removeBeanDefinition("executionController");
-        }
-    }
-
+    private final RestClient.Builder builder;
 
     /**
      * 长期记忆存储
@@ -80,29 +67,15 @@ public class AgentConfiguration {
                 .build();
     }
 
-    @Bean
-    public WebSearchTool webSearchTool(RestClient.Builder builder) {
-        return new WebSearchTool(builder);   // RestClient.Builder 由 Spring Boot 自动配置
-    }
-
     /**
      * react agent 注入
      */
     @Bean
-    public ReactAgent reactAgent(ChatModel chatModel, WebSearchTool webSearchTool) {
+    public ReactAgent reactAgent(ChatModel chatModel) {
         // shell tool 需要一个配套的ShellToolAgentHook
 //        ShellTool2 shellTool = ShellTool2.builder(".workspace").build();
         ShellToolAgentHook shellToolAgentHook = ShellToolAgentHook.builder()
                 .shellTool2(ShellTool2.builder(".workspace").build())
-                .build();
-
-        // 联网搜索
-        ToolCallback webSearch = FunctionToolCallback.builder("web_search", webSearchTool::search)
-                .description("""
-                搜索互联网获取实时信息。涉及新闻、时事、最新版本/价格/数据，或你不确定的事实时使用。
-                返回带编号的结果，回答时用 [1][2] 标注来源；不要编造结果里没有的内容。
-                """)
-                .inputType(WebSearchTool.Request.class)
                 .build();
 
         // 创建 hook
@@ -128,7 +101,7 @@ public class AgentConfiguration {
                 .systemPrompt("你是一个AI段子手，乐于助人")
                 .saver(mysqlSaver)
                 .methodTools(new OpenMeteoService(), new TimeService())
-                .tools(UserInfoTool.getUserInfoFunction(), UserInfoSaveTool.saveUserInfoFunction(), webSearch)
+                .tools(UserInfoTool.getUserInfoFunction(), UserInfoSaveTool.saveUserInfoFunction(), WebSearchTool.webSearchFunction(builder))
                 .hooks(humanInTheLoopHook, limitHook, new LoggingHook(), shellToolAgentHook, new LongTermMemoryHook())
                 .model(chatModel)
                 .build();

@@ -1,21 +1,22 @@
 package ai.lifo.agent.tool;
 
+import ai.lifo.agent.tool.serper.Request;
+import ai.lifo.agent.tool.serper.Response;
 import ai.lifo.agent.tool.serper.SerperErrorResponse;
 import ai.lifo.agent.tool.serper.SerperSearchResponse;
 import com.alibaba.fastjson.JSONObject;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.function.FunctionToolCallback;
 import org.springframework.http.MediaType;
+import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.function.Function;
 
 /**
  * Google 搜索工具（基于 Serper API）。
@@ -27,7 +28,7 @@ import java.util.Set;
  * @since 2026-10-28
  */
 @Slf4j
-public class WebSearchTool {
+public class WebSearchTool implements Function<Request, Response> {
 
     private static final String DEFAULT_BASE_URL = "https://google.serper.dev";
 
@@ -67,44 +68,33 @@ public class WebSearchTool {
         this.restClient = builder.baseUrl(DEFAULT_BASE_URL).build();
     }
 
-    /**
-     * @param query      搜索词，尽量写完整、可独立成立的查询
-     * @param maxResults 返回条数，1~10，默认 5
-     * @param type       检索类型：search（网页，默认）/ news（新闻）
-     * @param timeRange  时间范围：day / week / month / year，可不填
-     */
-    public record Request(String query, Integer maxResults, String type, String timeRange) {}
 
-    /**
-     * @param success  是否成功
-     * @param markdown 给模型看的正文（成功时是搜索结果，失败时是可读的失败原因）
-     * @param error    失败时的结构化错误，成功时为 null
-     */
-    public record Response(boolean success, String markdown, Error error) {
+    public static ToolCallback webSearchFunction(RestClient.Builder builder) {
+        // 联网搜索
+        return FunctionToolCallback.builder("web_search", new WebSearchTool(builder))
+                .description("""
+                        搜索互联网获取实时信息。涉及新闻、时事、最新版本/价格/数据，或你不确定的事实时使用。
+                        返回带编号的结果，回答时用 [1][2] 标注来源；不要编造结果里没有的内容。
+                        """)
+                .inputType(Request.class)
+                .build();
+    }
 
-        static Response ok(String markdown) {
-            return new Response(true, markdown, null);
-        }
 
-        static Response fail(Error error) {
-            return new Response(false, "搜索失败：" + error.message(), error);
-        }
+    @Override
+    public Response apply(Request request) {
+        return search(request);
     }
 
     /**
-     * @param code     机器可读的错误码
-     * @param message  可读描述
-     * @param upstream Serper 返回的原始错误对象，可能为 null（网络异常时没有响应体）
+     * 搜索
      */
-    public record Error(String code, String message, SerperErrorResponse upstream) {}
-
     public Response search(Request req) {
         if (req == null || !StringUtils.hasText(req.query())) {
             return Response.fail(new Error("EMPTY_QUERY", "query 不能为空", null));
         }
         if (!StringUtils.hasText(apiKey)) {
-            return Response.fail(new Error("MISSING_API_KEY",
-                    "未配置 SERPER_API_KEY（环境变量或 JVM 参数 -DAI_SERPER_API_KEY）", null));
+            return Response.fail(new Error("MISSING_API_KEY", "未配置 SERPER_API_KEY", null));
         }
 
         String query = req.query().trim();
@@ -172,9 +162,8 @@ public class WebSearchTool {
             }
         }
 
-        String detail = upstream != null && StringUtils.hasText(upstream.message())
-                ? upstream.message()
-                : abbreviate(raw, 200);
+        String detail = upstream != null && StringUtils.hasText(upstream.message()) ? upstream.message() : abbreviate(raw);
+
         String message = switch (code) {
             case "API_KEY_INVALID" -> "API Key 无效或额度已用尽";
             case "RATE_LIMITED" -> "请求过于频繁，已被限流，稍后重试";
@@ -211,9 +200,12 @@ public class WebSearchTool {
         // 2. 知识卡片
         SerperSearchResponse.KnowledgeGraph knowledge = response.knowledgeGraph();
         if (knowledge != null && StringUtils.hasText(knowledge.description())) {
+
             sb.append("[知识卡片] ")
-                    .append(truncate(nvl(knowledge.title()), 60)).append("：")
-                    .append(truncate(knowledge.description(), SNIPPET_MAX_CHARS)).append('\n');
+                    .append(truncate(ObjectUtils.nullSafeToString(knowledge.title()), 60))
+                    .append("：")
+                    .append(truncate(knowledge.description(), SNIPPET_MAX_CHARS))
+                    .append('\n');
             if (StringUtils.hasText(knowledge.descriptionLink())
                     && knowledge.descriptionLink().startsWith("http")) {
                 sb.append("来源：").append(knowledge.descriptionLink()).append('\n');
@@ -266,8 +258,11 @@ public class WebSearchTool {
     }
 
     private String renderItem(int index, Item item) {
-        StringBuilder b = new StringBuilder();
-        b.append('[').append(index).append("] ").append(truncate(nvl(item.title()), 150));
+        StringBuilder b = new StringBuilder()
+                .append('[')
+                .append(index)
+                .append("] ")
+                .append(truncate(ObjectUtils.nullSafeToString(item.title()), 150));
 
         List<String> meta = new ArrayList<>(2);
         if (StringUtils.hasText(item.date())) {
@@ -371,13 +366,10 @@ public class WebSearchTool {
         return t.length() <= max ? t : t.substring(0, max) + "…";
     }
 
-    private static String abbreviate(String s, int max) {
-        return s == null ? "" : (s.length() <= max ? s : s.substring(0, max) + "…");
+    private static String abbreviate(String s) {
+        return s == null ? "" : (s.length() <= SNIPPET_MAX_CHARS ? s : s.substring(0, SNIPPET_MAX_CHARS) + "…");
     }
 
-    private static String nvl(String s) {
-        return s == null ? "" : s;
-    }
 
     /** 依次尝试：环境变量 SERPER_API_KEY → AI_SERPER_API_KEY → JVM 参数 */
     private static String resolveApiKey() {
@@ -389,7 +381,8 @@ public class WebSearchTool {
             key = System.getProperty("AI_SERPER_API_KEY");
         }
         if (!StringUtils.hasText(key)) {
-            log.warn("[WebSearchTool] 未找到 SERPER_API_KEY，联网搜索将不可用");
+            log.error("[WebSearchTool] 未找到 SERPER_API_KEY，联网搜索将不可用");
+            throw new RuntimeException("未找到 SERPER_API_KEY");
         }
         return key;
     }

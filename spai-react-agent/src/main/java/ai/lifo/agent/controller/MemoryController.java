@@ -1,5 +1,6 @@
 package ai.lifo.agent.controller;
 
+import ai.lifo.agent.config.UserPreferences;
 import com.alibaba.cloud.ai.agent.studio.dto.AgentRunRequest;
 import com.alibaba.cloud.ai.agent.studio.dto.messages.UserMessageDTO;
 import com.alibaba.cloud.ai.agent.studio.loader.AgentLoader;
@@ -58,9 +59,21 @@ public class MemoryController {
         StoreItem profileItem = StoreItem.of(List.of("user_profiles"), "user_001", profileData);
         store.putItem(profileItem);
 
-
         return "Store item put successfully";
     }
+
+    @GetMapping("/putStore2")
+    public String putStoreItem() {
+        // 创建长期记忆存储并预填充用户偏好
+        Map<String, Object> preferencesData = new HashMap<>();
+        UserPreferences userPreferences = new UserPreferences("dark", "zh", List.of("打篮球", "喝咖啡"), "dark", "Asia/Shanghai");
+        preferencesData.put(UserPreferences.KEY, userPreferences);
+        StoreItem preferencesItem = StoreItem.of(List.of(UserPreferences.KEY), "user-001", preferencesData);
+        store.putItem(preferencesItem);
+        return "Store item put successfully";
+    }
+
+
 
     @GetMapping("/run")
     public Flux<String> getMessage(String question, @RequestParam(defaultValue = "user_123") String userId) throws GraphRunnerException {

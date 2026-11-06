@@ -1,16 +1,17 @@
-package ai.lifo.agent.graph;
+package ai.lifo.agent.graph.node;
 
+import ai.lifo.agent.graph.EmailClassification;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
+import com.alibaba.fastjson.JSON;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
+ * 分类意图节点
  * @author zhanglifeng
  * @since 2026-10-28
  */
@@ -19,8 +20,8 @@ public class ClassifyIntentNode implements NodeAction {
 
     private final ChatClient chatClient;
 
-    public ClassifyIntentNode(ChatClient chatClient) {
-        this.chatClient = chatClient;
+    public ClassifyIntentNode(ChatClient.Builder chatClientBuilder) {
+        this.chatClient = chatClientBuilder.build();
     }
 
     @Override
@@ -56,15 +57,18 @@ public class ClassifyIntentNode implements NodeAction {
         // 解析为 EmailClassification 对象
         EmailClassification classification = parseClassification(response);
 
-        // 根据分类确定下一个节点
+        // 根据分类确定下一个节点 账单类或紧急类邮件需要到人工节点
         String nextNode;
         if ("billing".equals(classification.getIntent()) || "critical".equals(classification.getUrgency())) {
             nextNode = "human_review";
-        } else if (List.of("question", "feature").contains(classification.getIntent())) {
+        }
+        else if (List.of("question", "feature").contains(classification.getIntent())) {
             nextNode = "search_documentation";
-        } else if ("bug".equals(classification.getIntent())) {
+        }
+        else if ("bug".equals(classification.getIntent())) {
             nextNode = "bug_tracking";
-        } else {
+        }
+        else {
             nextNode = "draft_response";
         }
 
@@ -76,33 +80,7 @@ public class ClassifyIntentNode implements NodeAction {
      * 简化的JSON解析（实际应用中使用Jackson或Gson）
      */
     private EmailClassification parseClassification(String jsonResponse) {
-        EmailClassification classification = new EmailClassification();
-
-        // 简单的正则表达式解析
-        Pattern intentPattern = Pattern.compile("\"intent\"\\s*:\\s*\"([^\"]+)\"");
-        Pattern urgencyPattern = Pattern.compile("\"urgency\"\\s*:\\s*\"([^\"]+)\"");
-        Pattern topicPattern = Pattern.compile("\"topic\"\\s*:\\s*\"([^\"]+)\"");
-        Pattern summaryPattern = Pattern.compile("\"summary\"\\s*:\\s*\"([^\"]+)\"");
-
-        Matcher matcher = intentPattern.matcher(jsonResponse);
-        if (matcher.find()) {
-            classification.setIntent(matcher.group(1));
-        }
-
-        matcher = urgencyPattern.matcher(jsonResponse);
-        if (matcher.find()) {
-            classification.setUrgency(matcher.group(1));
-        }
-
-        matcher = topicPattern.matcher(jsonResponse);
-        if (matcher.find()) {
-            classification.setTopic(matcher.group(1));
-        }
-
-        matcher = summaryPattern.matcher(jsonResponse);
-        if (matcher.find()) {
-            classification.setSummary(matcher.group(1));
-        }
+        EmailClassification classification = JSON.parseObject(jsonResponse, EmailClassification.class);
 
         // 如果解析失败，设置默认值
         if (classification.getIntent() == null) {

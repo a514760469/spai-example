@@ -26,7 +26,7 @@ spring:
             api-key: ${AI_DASHSCOPE_API_KEY}
             chat:
                 options:
-                    model: qwen3.8-max
+                    model: qwen3.8-2.4t-a95b
                     multi-model: true
 #                    http-headers:
 #                        X-DashScope-DataInspection: '{"input":"disable","output":"disable"}'
@@ -39,7 +39,7 @@ spring:
                     model: qwen3.7-text-rerank
         mcp:
             client:
-                enabled: true
+                enabled: false
                 toolcallback:
                     enabled: true
                 streamable-http:
@@ -49,6 +49,10 @@ spring:
                            endpoint: "/sse"
     application:
         name: react-agent
+    data:
+        redis:
+            host: 127.0.0.1
+            password: 123456
 server:
     servlet:
         encoding:

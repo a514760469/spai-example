@@ -42,8 +42,10 @@ public class EmailClassification {
             strategies.put("draft_response", new ReplaceStrategy());
             strategies.put("messages", new AppendStrategy());
             strategies.put("next_node", new ReplaceStrategy());
-            strategies.put("status", new ReplaceStrategy());
+            strategies.put("status", new ReplaceStrategy());// 发送状态 sent
             strategies.put("review_data", new ReplaceStrategy());
+            strategies.put("approved", new ReplaceStrategy());// 审核结果
+            strategies.put("edited_response", new ReplaceStrategy());
             return strategies;
         };
     }
