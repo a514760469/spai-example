@@ -13,6 +13,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
+ * Redis CheckPointer 配置
  * @author zhanglifeng
  * @since 2026-11-05
  */

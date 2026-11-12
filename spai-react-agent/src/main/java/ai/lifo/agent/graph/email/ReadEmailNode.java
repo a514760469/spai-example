@@ -1,4 +1,4 @@
-package ai.lifo.agent.graph.node;
+package ai.lifo.agent.graph.email;
 
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;

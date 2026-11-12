@@ -35,13 +35,17 @@ public class ChatNode implements NodeActionWithConfig {
     @Override
     public Map<String, Object> apply(OverAllState state, RunnableConfig config) throws Exception {
 
+        //noinspection unchecked
         List<UserMessage> messages = (List<UserMessage>) state.value("messages").orElse(List.of());
 
         UserPreferences userPreferences = (UserPreferences) state.value(UserPreferences.KEY).orElse(UserPreferences.DEFAULT);
 
         // 构建包含用户偏好的提示
         String userPrompt = messages.getLast().getText();
-        String enhancedPrompt = "用户偏好: " + userPreferences.preferences() + " 用户问题: " + userPrompt;
+        String enhancedPrompt = """
+                用户偏好为: %s
+                用户问题为: %s
+                """.formatted(userPreferences.preferences(), userPrompt);
 
         // 调用 AI
         Flux<ChatResponse> chatResponse = chatClient.prompt()

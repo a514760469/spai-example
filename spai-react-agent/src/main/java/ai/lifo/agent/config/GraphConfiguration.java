@@ -1,6 +1,7 @@
 package ai.lifo.agent.config;
 
 import ai.lifo.agent.graph.EmailCompiledGraph;
+import ai.lifo.agent.graph.HumanFeedbackCompiledGraph;
 import ai.lifo.agent.graph.chat.ChatCompiledGraph;
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.checkpoint.savers.mysql.MysqlSaver;
@@ -34,6 +35,11 @@ public class GraphConfiguration {
     @Bean
     public CompiledGraph chatGraph(ChatModel chatModel) throws GraphStateException {
         return ChatCompiledGraph.createGraph(chatModel, redisSaver);
+    }
+
+    @Bean
+    public CompiledGraph humanFeedbackCompiledGraph(ChatModel chatModel) throws GraphStateException {
+        return HumanFeedbackCompiledGraph.createGraph(chatModel, redisSaver);
     }
 
 }

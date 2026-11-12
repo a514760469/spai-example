@@ -86,6 +86,7 @@ public class GraphExecutionController {
                 String content = (request.newMessage != null && request.newMessage.getContent() != null)
                         ? request.newMessage.getContent() : "";
                 inputs = Map.of(
+                        "query", content,
                         "input", content,
                         "messages", List.of(new UserMessage(content)),
                         "userId", request.userId
@@ -106,6 +107,63 @@ public class GraphExecutionController {
             log.error("Error during graph run for thread {}", request.threadId, e);
             return Flux.error(new ResponseStatusException(
                     org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "Graph run failed", e));
+        }
+    }
+
+    /**
+     * 人工反馈恢复端点：注入用户决策后从中断点继续执行。
+     *
+     * 请求体示例：
+     * {
+     *   "graphName": "humanFeedbackGraph",
+     *   "threadId": "demo-thread-1",
+     *   "userId": "user-001",
+     *   "inputs": { "humannextnode": "translate" }
+     * }
+     */
+    @PostMapping(value = "/graph_resume_sse", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<String>> graphResumeSse(@RequestBody GraphRunRequest request) {
+        String graphName = request.getGraphName();
+        String threadId = request.getThreadId();
+        String userId = request.getUserId();
+        if (graphName == null || graphName.trim().isEmpty()) {
+            return Flux.error(new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "graphName cannot be null or empty"));
+        }
+        if (threadId == null || threadId.trim().isEmpty()) {
+            return Flux.error(new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "threadId cannot be null or empty"));
+        }
+        Map<String, Object> inputs = request.getInputs();
+        if (inputs == null || inputs.isEmpty()) {
+            return Flux.error(new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "inputs cannot be null or empty"));
+        }
+        Object nextNodeValue = inputs.get("humannextnode");
+        if (nextNodeValue != null && !(nextNodeValue instanceof String)) {
+            return Flux.error(new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "inputs.humannextnode must be a string"));
+        }
+        try {
+            String nextNode = (String) nextNodeValue;
+
+            CompiledGraph graph = graphLoader.loadGraph(graphName);
+            RunnableConfig runnableConfig = RunnableConfig.builder()
+                    .store(store)
+                    .threadId(threadId)
+                    .addMetadata("user_id", userId)
+                    .build();
+            // 注入用户反馈到 State（interruptBefore 模式下 nodeId 传 null）
+            RunnableConfig updatedConfig = graph.updateState(runnableConfig, inputs, nextNode);
+
+            // 从中断点恢复执行（input 为 null，使用已有 State）
+            Flux<NodeOutput> graphStream = graph.stream(null, updatedConfig);
+            return executeGraph(graphStream);
+        }
+        catch (Exception e) {
+            log.error("Error during graph resume for thread {}", threadId, e);
+            return Flux.error(new ResponseStatusException(
+                    org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "Graph resume failed", e));
         }
     }
 

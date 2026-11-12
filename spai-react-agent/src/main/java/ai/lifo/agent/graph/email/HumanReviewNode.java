@@ -1,6 +1,5 @@
-package ai.lifo.agent.graph.node;
+package ai.lifo.agent.graph.email;
 
-import ai.lifo.agent.graph.EmailClassification;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
 import lombok.extern.slf4j.Slf4j;

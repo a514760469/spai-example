@@ -1,4 +1,4 @@
-package ai.lifo.agent.graph;
+package ai.lifo.agent.graph.email;
 
 import com.alibaba.cloud.ai.graph.KeyStrategy;
 import com.alibaba.cloud.ai.graph.KeyStrategyFactory;

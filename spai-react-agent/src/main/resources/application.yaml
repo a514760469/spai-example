@@ -26,7 +26,7 @@ spring:
             api-key: ${AI_DASHSCOPE_API_KEY}
             chat:
                 options:
-                    model: qwen3.8-2.4t-a95b
+                    model: qwen3.8-27b
                     multi-model: true
 #                    http-headers:
 #                        X-DashScope-DataInspection: '{"input":"disable","output":"disable"}'
