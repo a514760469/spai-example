@@ -1,7 +1,7 @@
 package ai.lifo.agent.config;
 
 import ai.lifo.agent.graph.EmailCompiledGraph;
-import ai.lifo.agent.graph.HumanFeedbackCompiledGraph;
+import ai.lifo.agent.graph.TranslateCompiledGraph;
 import ai.lifo.agent.graph.chat.ChatCompiledGraph;
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.checkpoint.savers.mysql.MysqlSaver;
@@ -26,20 +26,26 @@ public class GraphConfiguration {
 
     private final RedisSaver redisSaver;
 
+    /**
+     * 测试邮件处理graph
+     */
     @Bean
     public CompiledGraph emailGraph(ChatModel chatModel) throws GraphStateException {
         MysqlSaver mysqlSaver = new MysqlSaver.Builder().dataSource(dataSource).build();
         return EmailCompiledGraph.createEmailAgentGraph(chatModel, mysqlSaver);
     }
 
+    /**
+     * 聊天graph
+     */
     @Bean
     public CompiledGraph chatGraph(ChatModel chatModel) throws GraphStateException {
         return ChatCompiledGraph.createGraph(chatModel, redisSaver);
     }
 
     @Bean
-    public CompiledGraph humanFeedbackCompiledGraph(ChatModel chatModel) throws GraphStateException {
-        return HumanFeedbackCompiledGraph.createGraph(chatModel, redisSaver);
+    public CompiledGraph translateCompiledGraph(ChatModel chatModel) throws GraphStateException {
+        return TranslateCompiledGraph.createGraph(chatModel, redisSaver);
     }
 
 }

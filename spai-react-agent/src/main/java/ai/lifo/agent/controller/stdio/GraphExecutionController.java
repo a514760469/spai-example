@@ -1,6 +1,7 @@
 package ai.lifo.agent.controller.stdio;
 
 
+import ai.lifo.agent.graph.translate.HumanFeedbackDispatcher;
 import com.alibaba.cloud.ai.agent.studio.dto.GraphRunRequest;
 import com.alibaba.cloud.ai.agent.studio.dto.GraphRunResponse;
 import com.alibaba.cloud.ai.agent.studio.dto.messages.MessageDTO;
@@ -118,7 +119,7 @@ public class GraphExecutionController {
      *   "graphName": "humanFeedbackGraph",
      *   "threadId": "demo-thread-1",
      *   "userId": "user-001",
-     *   "inputs": { "humannextnode": "translate" }
+     *   "inputs": { "human_nextnode": "translate" }
      * }
      */
     @PostMapping(value = "/graph_resume_sse", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -139,22 +140,21 @@ public class GraphExecutionController {
             return Flux.error(new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
                     "inputs cannot be null or empty"));
         }
-        Object nextNodeValue = inputs.get("humannextnode");
+        Object nextNodeValue = inputs.get(HumanFeedbackDispatcher.STATE_KEY);
         if (nextNodeValue != null && !(nextNodeValue instanceof String)) {
             return Flux.error(new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
-                    "inputs.humannextnode must be a string"));
+                    "inputs." + HumanFeedbackDispatcher.STATE_KEY + " must be a string"));
         }
         try {
-            String nextNode = (String) nextNodeValue;
-
             CompiledGraph graph = graphLoader.loadGraph(graphName);
             RunnableConfig runnableConfig = RunnableConfig.builder()
                     .store(store)
                     .threadId(threadId)
                     .addMetadata("user_id", userId)
                     .build();
-            // 注入用户反馈到 State（interruptBefore 模式下 nodeId 传 null）
-            RunnableConfig updatedConfig = graph.updateState(runnableConfig, inputs, nextNode);
+            // 反馈只经 values 注入 State；asNode 是"模拟刚执行完的节点"语义，
+            // 传用户选择会让框架在当前图查它的出边（子图场景下必然不存在），必须传 null
+            RunnableConfig updatedConfig = graph.updateState(runnableConfig, inputs, null);
 
             // 从中断点恢复执行（input 为 null，使用已有 State）
             Flux<NodeOutput> graphStream = graph.stream(null, updatedConfig);

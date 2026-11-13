@@ -4,6 +4,7 @@ target/
 !**/src/test/**/target/
 *.flattened-pom.xml
 .workspace
+logs/
 
 ### IntelliJ IDEA ###
 .idea/modules.xml

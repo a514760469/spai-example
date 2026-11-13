@@ -63,6 +63,7 @@ public class ExpanderNode implements NodeAction {
                 .chatResponse();
 
         // Flux 必须作为 Map 顶层 value，框架才会自动订阅并聚合
-        return Map.of(STREAM_OUTPUT_KEY, chatResponseFlux);
+        // 保证 human_feedback 每轮都能重新中断
+        return Map.of(STREAM_OUTPUT_KEY, chatResponseFlux, HumanFeedbackDispatcher.STATE_KEY, OverAllState.MARK_FOR_REMOVAL);
     }
 }

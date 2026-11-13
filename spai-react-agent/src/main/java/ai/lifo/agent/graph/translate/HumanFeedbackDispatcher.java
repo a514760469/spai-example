@@ -15,7 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class HumanFeedbackDispatcher implements EdgeAction {
 
-    public static final String STATE_KEY = "humannextnode";
+    public static final String STATE_KEY = "human_nextnode";
 
     @Override
     public String apply(OverAllState state) throws Exception {

@@ -35,35 +35,33 @@ import static com.alibaba.cloud.ai.graph.action.AsyncNodeAction.node_async;
  * @since 2026-11-10
  */
 @Slf4j
-public class HumanFeedbackCompiledGraph {
+public class TranslateCompiledGraph {
+
+
+    // ---- 状态 key 策略 ----
+    public static final KeyStrategyFactory keyStrategyFactory = () -> {
+        Map<String, KeyStrategy> strategies = new HashMap<>();
+        strategies.put("query", new ReplaceStrategy());
+        strategies.put("expandernumber", new ReplaceStrategy());
+        strategies.put(ExpanderNode.STREAM_OUTPUT_KEY, new ReplaceStrategy());
+        strategies.put(ExpanderProcessNode.OUTPUT_KEY, new ReplaceStrategy());
+        strategies.put(HumanFeedbackDispatcher.STATE_KEY, new ReplaceStrategy());
+        strategies.put("translatelanguage", new ReplaceStrategy());
+        strategies.put("translatecontent", new ReplaceStrategy());
+        return strategies;
+    };
 
     public static CompiledGraph createGraph(ChatModel chatModel, BaseCheckpointSaver saver)
             throws GraphStateException {
 
         ChatClient.Builder chatClientBuilder = ChatClient.builder(chatModel);
 
-        // ---- 状态 key 策略 ----
-        KeyStrategyFactory keyStrategyFactory = () -> {
-            Map<String, KeyStrategy> strategies = new HashMap<>();
-            strategies.put("query", new ReplaceStrategy());
-            strategies.put("expandernumber", new ReplaceStrategy());
-            strategies.put(ExpanderNode.STREAM_OUTPUT_KEY, new ReplaceStrategy());
-            strategies.put(ExpanderProcessNode.OUTPUT_KEY, new ReplaceStrategy());
-            strategies.put(HumanFeedbackDispatcher.STATE_KEY, new ReplaceStrategy());
-            strategies.put("translatelanguage", new ReplaceStrategy());
-            strategies.put("translatecontent", new ReplaceStrategy());
-            return strategies;
-        };
-
         // ---- 构建图 ----
         StateGraph graph = new StateGraph(keyStrategyFactory)
-                .addNode(ExpanderNode.NODE_NAME,
-                        node_async(new ExpanderNode(chatClientBuilder)))
+                .addNode(ExpanderNode.NODE_NAME, node_async(new ExpanderNode(chatClientBuilder)))
                 .addNode(ExpanderProcessNode.NODE_NAME, node_async(new ExpanderProcessNode()))
                 .addNode(HumanFeedbackNode.NODE_NAME, new HumanFeedbackNode())
-                .addNode("translate",
-                        node_async(new TranslateNode(chatClientBuilder)))
-
+                .addNode(TranslateNode.NODE_NAME, node_async(new TranslateNode(chatClientBuilder)))
                 // START → expander → expander_process → human_feedback
                 .addEdge(START, ExpanderNode.NODE_NAME)
                 .addEdge(ExpanderNode.NODE_NAME, ExpanderProcessNode.NODE_NAME)
@@ -76,7 +74,6 @@ public class HumanFeedbackCompiledGraph {
                                 "translate", "translate",                        // 继续翻译
                                 END, END                                        // 直接结束
                         ))
-
                 // translate → END
                 .addEdge("translate", END);
 

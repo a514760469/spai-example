@@ -19,7 +19,7 @@ import java.util.Map;
 public class ExpanderProcessNode implements NodeAction {
 
     public static final String NODE_NAME = "expander_process";
-    public static final String OUTPUT_KEY = "expandercontent";
+    public static final String OUTPUT_KEY = "expander_content";
 
     @Override
     public Map<String, Object> apply(OverAllState state) throws Exception {

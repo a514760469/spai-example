@@ -17,6 +17,8 @@ import java.util.Map;
 @Slf4j
 public class TranslateNode implements NodeAction {
 
+    public static final String NODE_NAME = "translate";
+
     private static final PromptTemplate DEFAULTPROMPTTEMPLATE = new PromptTemplate(
             """
             Given a user query, translate it to {targetLanguage}.
