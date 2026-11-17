@@ -44,7 +44,6 @@ public class AgentConfiguration {
 //        return new DatabaseStore(dataSource);
     }
 
-
     /**
      * RAG agent
      */

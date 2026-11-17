@@ -26,6 +26,7 @@
         <module>rag-example</module>
         <module>rag-saa-example</module>
         <module>rag-my-knowledge</module>
+        <module>shopping-agent</module>
     </modules>
 
     <properties>
