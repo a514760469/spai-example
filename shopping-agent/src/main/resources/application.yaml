@@ -1,0 +1,55 @@
+spring:
+    datasource:
+        url: jdbc:mysql://localhost:3307/spai?characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true
+        driver-class-name: com.mysql.cj.jdbc.Driver
+        username: root
+        password: 123456
+    application:
+        name: shopping-agent
+    ai:
+        dashscope:
+            api-key: ${AI_DASHSCOPE_API_KEY}
+            chat:
+                options:
+                    model: qwen3.8-flash
+                    multi-model: true
+            embedding:
+                options:
+                    model: qwen3.7-text-embedding-flash
+                    dimensions: 1024
+            rerank:
+                options:
+                    model: qwen3.7-text-rerank
+        mcp:
+            client:
+                enabled: true
+                toolcallback:
+                    enabled: true
+                sse:
+                    connections:
+                        ecom-mock:
+                            url: "http://localhost:8000"
+                            sse-endpoint: "/sse"
+                request-timeout: 600s
+    data:
+        redis:
+            host: 127.0.0.1
+            password: 123456
+server:
+    servlet:
+        encoding:
+            force: true
+            force-request: true
+            force-response: true
+    port: 8080
+
+logging:
+    level:
+        org.springframework.jdbc.core.JdbcTemplate: debug
+        org.springframework.ai: debug
+        com.alibaba.dashscope.api: debug
+        com.alibaba.cloud.ai.dashscope.chat: debug
+        # request url debug
+        org.springframework.web.client: debug
+        org.apache.hc.client5.http: debug
+        org.springframework.ai.chat.client.advisor: DEBUG

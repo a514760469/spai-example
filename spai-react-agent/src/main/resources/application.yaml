@@ -2,7 +2,7 @@ spring:
     elasticsearch:
         uris: http://localhost:9200
     datasource:
-        url: jdbc:mysql://localhost:3307/spai?useUnicode=true&characterEncoding=utf-8&useSSL=false&allowPublicKeyRetrieval=true&zeroDateTimeBehavior=convertToNull&transformedBitIsBoolean=true&allowMultiQueries=true&tinyInt1isBit=false&allowLoadLocalInfile=true&allowLocalInfile=true&allowUrl
+        url: jdbc:mysql://localhost:3307/spai?characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true
         driver-class-name: com.mysql.cj.jdbc.Driver
         username: root
         password: 123456

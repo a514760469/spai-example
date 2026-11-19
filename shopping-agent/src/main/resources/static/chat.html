@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shopping Agent</title>
+<script src="vendor/marked.min.js"></script>
+<style>
+  :root {
+    --background: #ffffff;
+    --foreground: #252525;
+    --card: #ffffff;
+    --muted: #f5f5f5;
+    --muted-foreground: #8f8f8f;
+    --border: #ebebeb;
+    --primary: #333333;
+    --primary-foreground: #fafafa;
+    --ring: #a3a3a3;
+    --radius: 0.625rem;
+    --amber-bg: #fffbeb;
+    --amber-border: #fde68a;
+    --amber-text: #92400e;
+    --green: #16a34a;
+    --red: #dc2626;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 16px; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--background); color: var(--foreground);
+    height: 100vh; display: flex; flex-direction: column;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; cursor: pointer; transition: all .15s cubic-bezier(.4,0,.2,1); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(255,255,255,.85); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px; display: flex; align-items: center; gap: 12px;
+  }
+  .logo { width: 32px; height: 32px; border-radius: 8px; background: var(--primary); color: var(--primary-foreground); display: flex; align-items: center; justify-content: center; }
+  header h1 { font-size: 1.125rem; font-weight: 600; letter-spacing: -.025em; }
+  #threadChip { font-size: .8125rem; color: var(--muted-foreground); background: var(--muted); border-radius: 9999px; padding: 3px 12px; }
+  #newChat {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+    font-size: .875rem; font-weight: 500; padding: 7px 14px;
+    border: 1px solid var(--border); background: var(--background); color: var(--foreground);
+    border-radius: var(--radius);
+  }
+  #newChat:hover { background: var(--muted); }
+
+  #scrollArea { flex: 1; overflow-y: auto; }
+  #messages { max-width: 48rem; width: 100%; margin: 0 auto; padding: 28px 24px 16px; }
+
+  .welcome { text-align: center; padding: 9vh 0 5vh; }
+  .welcome .logo { width: 52px; height: 52px; border-radius: 14px; margin: 0 auto 18px; }
+  .welcome h2 { font-size: 1.625rem; font-weight: 600; letter-spacing: -.025em; margin-bottom: 8px; }
+  .welcome p { color: var(--muted-foreground); font-size: 1rem; margin-bottom: 30px; }
+  .suggestions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .suggestions button {
+    text-align: left; font-size: .9375rem; line-height: 1.5; color: var(--foreground);
+    background: var(--card); border: 1px solid var(--border); border-radius: 1rem;
+    padding: 14px 18px; max-width: 220px;
+  }
+  .suggestions button:hover { background: var(--muted); border-color: var(--ring); }
+  .suggestions .hint { display: block; font-size: .8125rem; color: var(--muted-foreground); margin-top: 4px; }
+
+  .row { margin-bottom: 22px; display: flex; flex-direction: column; animation: fadeIn .2s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .row.user { align-items: flex-end; }
+  .bubble { max-width: 85%; font-size: 1rem; line-height: 1.75; overflow-wrap: break-word; }
+  .user .bubble {
+    background: var(--primary); color: var(--primary-foreground);
+    padding: 12px 18px; border-radius: 1.25rem 1.25rem .375rem 1.25rem; white-space: pre-wrap;
+  }
+  .assistant .bubble {
+    background: var(--card); border: 1px solid var(--border);
+    padding: 16px 20px; border-radius: 1.25rem 1.25rem 1.25rem .375rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,.03);
+  }
+  .agentTag {
+    display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+    font-size: .75rem; font-weight: 500; color: var(--muted-foreground);
+    background: var(--muted); border-radius: 9999px; padding: 3px 10px; margin-bottom: 8px;
+  }
+  .agentTag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+  .md > *:first-child { margin-top: 0; }
+  .md > *:last-child { margin-bottom: 0; }
+  .md p { margin: .5em 0; }
+  .md h1, .md h2, .md h3, .md h4 { font-weight: 600; letter-spacing: -.025em; margin: 1em 0 .5em; line-height: 1.4; }
+  .md h1 { font-size: 1.375rem; } .md h2 { font-size: 1.25rem; } .md h3 { font-size: 1.125rem; } .md h4 { font-size: 1rem; }
+  .md ul, .md ol { margin: .5em 0; padding-left: 1.5em; }
+  .md li { margin: .25em 0; }
+  .md strong { font-weight: 600; }
+  .md a { color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; }
+  .md hr { border: none; border-top: 1px solid var(--border); margin: 1em 0; }
+  .md blockquote { border-left: 3px solid var(--border); padding-left: 1em; color: var(--muted-foreground); margin: .75em 0; }
+  .md code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .875em; background: var(--muted); border-radius: 5px; padding: 2px 5px; }
+  .md pre { background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; overflow-x: auto; margin: .75em 0; }
+  .md pre code { background: none; padding: 0; font-size: .8125rem; line-height: 1.6; }
+  .md table { border-collapse: collapse; margin: .75em 0; font-size: .9375rem; width: 100%; }
+  .md th, .md td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+  .md th { background: var(--muted); font-weight: 600; }
+  .md tr:nth-child(even) td { background: #fafafa; }
+
+  .status { font-size: .8125rem; color: var(--muted-foreground); text-align: center; margin: 14px 0; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .status::before, .status::after { content: ""; height: 1px; width: 48px; background: var(--border); }
+  .status.error { color: var(--red); }
+  .status.error::before, .status.error::after { background: #fecaca; }
+
+  details.tool {
+    background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 8px 14px; margin: 8px 0; max-width: 85%; font-size: .8125rem;
+  }
+  details.tool summary { cursor: pointer; color: var(--muted-foreground); font-family: ui-monospace, Menlo, Consolas, monospace; list-style: none; display: flex; align-items: center; gap: 8px; }
+  details.tool summary::-webkit-details-marker { display: none; }
+  details.tool summary::before { content: "▸"; transition: transform .15s; font-size: .75rem; }
+  details.tool[open] summary::before { transform: rotate(90deg); }
+  details.tool pre { background: var(--background); border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-top: 8px; max-height: 280px; overflow: auto; white-space: pre-wrap; word-break: break-all; font-size: .75rem; line-height: 1.6; }
+
+  .confirmCard {
+    background: var(--amber-bg); border: 1px solid var(--amber-border); border-radius: 1rem;
+    padding: 18px 20px; margin: 12px 0; max-width: 85%; animation: fadeIn .2s ease;
+  }
+  .confirmCard h3 { font-size: 1rem; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .confirmCard h3 svg { color: var(--amber-text); flex-shrink: 0; }
+  .confirmCard .desc { font-size: .875rem; color: var(--amber-text); margin-bottom: 10px; white-space: pre-wrap; line-height: 1.6; }
+  .confirmCard textarea {
+    width: 100%; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .8125rem; line-height: 1.6;
+    border: 1px solid var(--amber-border); border-radius: var(--radius); padding: 10px; min-height: 72px;
+    background: var(--background); color: var(--foreground); resize: vertical;
+  }
+  .confirmCard textarea:focus { outline: 2px solid var(--ring); outline-offset: 1px; }
+  .confirmCard .actions { margin-top: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .confirmCard .actions button { font-size: .875rem; font-weight: 500; padding: 7px 18px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--background); }
+  .confirmCard button.approve.selected { background: #f0fdf4; border-color: #86efac; color: var(--green); }
+  .confirmCard button.reject.selected { background: #fef2f2; border-color: #fca5a5; color: var(--red); }
+  .confirmCard .reason { display: none; width: 100%; margin-top: 10px; font-size: .875rem; padding: 8px 12px; border: 1px solid var(--amber-border); border-radius: var(--radius); background: var(--background); }
+  .confirmCard .decisionTag { font-size: .8125rem; color: var(--muted-foreground); }
+  #submitDecisions {
+    margin: 4px 0 18px; font-size: .9375rem; font-weight: 500; padding: 10px 26px;
+    background: var(--primary); color: var(--primary-foreground); border: none; border-radius: var(--radius);
+  }
+  #submitDecisions:hover:not(:disabled) { background: #1a1a1a; }
+
+  .typing { display: inline-flex; gap: 5px; padding: 14px 18px; }
+  .typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--ring); animation: bounce 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: .15s; }
+  .typing span:nth-child(3) { animation-delay: .3s; }
+  @keyframes bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .4; } 30% { transform: translateY(-5px); opacity: 1; } }
+
+  footer { border-top: 1px solid var(--border); background: var(--background); padding: 16px 24px 20px; }
+  .inputWrap { max-width: 48rem; margin: 0 auto; display: flex; gap: 10px; align-items: flex-end; }
+  #input {
+    flex: 1; resize: none; border: 1px solid var(--border); border-radius: 1rem;
+    padding: 13px 16px; font-size: 1rem; font-family: inherit; line-height: 1.5;
+    height: 50px; max-height: 160px; background: var(--card); color: var(--foreground);
+  }
+  #input:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(163,163,163,.15); }
+  #input::placeholder { color: var(--muted-foreground); }
+  #send {
+    width: 50px; height: 50px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    background: var(--primary); color: var(--primary-foreground); border: none; border-radius: 1rem;
+  }
+  #send:hover:not(:disabled) { background: #1a1a1a; }
+  .footHint { max-width: 48rem; margin: 8px auto 0; font-size: .75rem; color: var(--muted-foreground); text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+  </div>
+  <h1>Shopping Agent</h1>
+  <span id="threadChip"></span>
+  <button id="newChat">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+    新对话
+  </button>
+</header>
+<div id="scrollArea">
+  <div id="messages">
+    <div class="welcome" id="welcome">
+      <div class="logo">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+      </div>
+      <h2>有什么可以帮你？</h2>
+      <p>导购 · 下单 · 售后，一个会话全搞定。支付等敏感操作会先请你确认。</p>
+      <div class="suggestions">
+        <button data-q="帮我找一款 3000 元以内、拍照好的智能手机，对比几款给我推荐">📱 找手机<span class="hint">对比推荐，附理由</span></button>
+        <button data-q="我想看看最近有什么值得买的数码配件，预算 200 元">🎧 逛配件<span class="hint">按预算筛选</span></button>
+        <button data-q="帮我查一下我的订单和物流状态">📦 查订单<span class="hint">需要 sessionId</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+<footer>
+  <div class="inputWrap">
+    <textarea id="input" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+    <button id="send" title="发送">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+    </button>
+  </div>
+  <div class="footHint">敏感操作（支付 / 取消订单 / 退货）执行前会弹出确认卡片，批准后才真正执行</div>
+</footer>
+<script>
+const scrollArea = document.getElementById('scrollArea');
+const messagesEl = document.getElementById('messages');
+const inputEl = document.getElementById('input');
+const sendEl = document.getElementById('send');
+const threadChip = document.getElementById('threadChip');
+const welcomeTemplate = document.getElementById('welcome').cloneNode(true);
+
+let threadId = localStorage.getItem('chatThreadId') || crypto.randomUUID();
+localStorage.setItem('chatThreadId', threadId);
+threadChip.textContent = '会话 ' + threadId.slice(0, 8);
+
+let busy = false;
+let currentAssistant = null;
+let toolDetailsById = {};
+let typingEl = null;
+
+document.getElementById('newChat').onclick = () => {
+  if (busy) return;
+  threadId = crypto.randomUUID();
+  localStorage.setItem('chatThreadId', threadId);
+  threadChip.textContent = '会话 ' + threadId.slice(0, 8);
+  messagesEl.innerHTML = '';
+  messagesEl.appendChild(welcomeTemplate.cloneNode(true));
+  currentAssistant = null;
+  toolDetailsById = {};
+};
+
+messagesEl.addEventListener('click', e => {
+  const btn = e.target.closest('.suggestions button');
+  if (btn && !busy) { inputEl.value = btn.dataset.q; send(); }
+});
+
+sendEl.onclick = send;
+inputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+inputEl.addEventListener('input', () => {
+  inputEl.style.height = '50px';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + 'px';
+});
+
+function send() {
+  const text = inputEl.value.trim();
+  if (!text || busy) return;
+  inputEl.value = '';
+  inputEl.style.height = '50px';
+  const w = document.getElementById('welcome');
+  if (w) w.remove();
+  addUserRow(text);
+  runStream('/chat/stream', { threadId, message: text });
+}
+
+function setBusy(v) {
+  busy = v;
+  sendEl.disabled = v;
+  if (v) showTyping(); else hideTyping();
+}
+
+function showTyping() {
+  hideTyping();
+  const row = div('row assistant');
+  const t = div('typing');
+  t.innerHTML = '<span></span><span></span><span></span>';
+  row.appendChild(t);
+  messagesEl.appendChild(row);
+  typingEl = row;
+  scrollBottom();
+}
+function hideTyping() {
+  if (typingEl) { typingEl.remove(); typingEl = null; }
+}
+
+function addUserRow(text) {
+  const row = div('row user');
+  const bubble = div('bubble');
+  bubble.textContent = text;
+  row.appendChild(bubble);
+  messagesEl.appendChild(row);
+  scrollBottom();
+}
+
+function addStatus(text, isError) {
+  const el = div('status' + (isError ? ' error' : ''));
+  el.textContent = text;
+  messagesEl.appendChild(el);
+  scrollBottom();
+}
+
+function div(cls) {
+  const el = document.createElement('div');
+  el.className = cls;
+  return el;
+}
+
+const AGENT_NAMES = { 'guide-agent': '导购助手', 'trade-agent': '交易助手', 'after-sale-agent': '售后助手' };
+function agentLabel(agent) {
+  if (!agent) return '助手';
+  const base = agent.replace(/^subgraph_/, '');
+  return AGENT_NAMES[base] || base;
+}
+
+function ensureAssistant(agent) {
+  hideTyping();
+  if (currentAssistant && currentAssistant.agent === agent) return currentAssistant;
+  const row = div('row assistant');
+  const tag = div('agentTag');
+  tag.innerHTML = '<span class="dot"></span>';
+  tag.appendChild(document.createTextNode(agentLabel(agent)));
+  const bubble = div('bubble md');
+  row.appendChild(tag);
+  row.appendChild(bubble);
+  messagesEl.appendChild(row);
+  currentAssistant = { bubble, raw: '', agent };
+  return currentAssistant;
+}
+
+function renderMarkdown(el, raw) {
+  if (window.marked) {
+    el.innerHTML = marked.parse(raw, { breaks: true });
+    el.querySelectorAll('script,iframe,object,embed,link,style').forEach(n => n.remove());
+    el.querySelectorAll('*').forEach(n => {
+      [...n.attributes].forEach(a => {
+        if (/^on/i.test(a.name) || /javascript:/i.test(a.value)) n.removeAttribute(a.name);
+      });
+    });
+  } else {
+    el.textContent = raw;
+    el.style.whiteSpace = 'pre-wrap';
+  }
+}
+
+function prettyJson(s) {
+  try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
+}
+
+function addToolCall(agent, tc) {
+  ensureAssistant(agent);
+  const d = document.createElement('details');
+  d.className = 'tool';
+  const sum = document.createElement('summary');
+  sum.textContent = tc.name;
+  const pre = document.createElement('pre');
+  pre.textContent = prettyJson(tc.arguments);
+  d.appendChild(sum);
+  d.appendChild(pre);
+  messagesEl.appendChild(d);
+  toolDetailsById[tc.id] = d;
+  currentAssistant = null;
+  scrollBottom();
+}
+
+function addToolResult(agent, r) {
+  let d = toolDetailsById[r.id];
+  if (!d) {
+    d = document.createElement('details');
+    d.className = 'tool';
+    const sum = document.createElement('summary');
+    sum.textContent = r.name + ' 结果';
+    d.appendChild(sum);
+    messagesEl.appendChild(d);
+  }
+  const pre = document.createElement('pre');
+  pre.textContent = prettyJson(r.data);
+  d.appendChild(pre);
+  scrollBottom();
+}
+
+function addInterruptCard(frame) {
+  hideTyping();
+  currentAssistant = null;
+  const decisions = {};
+  const cards = [];
+
+  frame.feedbacks.forEach(tf => {
+    decisions[tf.id] = { result: null, reason: '', arguments: tf.arguments };
+    const card = div('confirmCard');
+    const h3 = document.createElement('h3');
+    h3.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+    h3.appendChild(document.createTextNode('需要人工确认：' + tf.name));
+    const desc = div('desc');
+    desc.textContent = tf.description;
+    const args = document.createElement('textarea');
+    args.value = prettyJson(tf.arguments);
+    args.spellcheck = false;
+    const actions = div('actions');
+    const approve = document.createElement('button');
+    approve.className = 'approve';
+    approve.textContent = '批准';
+    const reject = document.createElement('button');
+    reject.className = 'reject';
+    reject.textContent = '拒绝';
+    const tag = div('decisionTag');
+    const reason = document.createElement('input');
+    reason.className = 'reason';
+    reason.placeholder = '拒绝原因（会反馈给模型）';
+
+    approve.onclick = () => {
+      const edited = args.value !== prettyJson(tf.arguments);
+      decisions[tf.id] = {
+        result: edited ? 'EDITED' : 'APPROVED',
+        arguments: edited ? args.value : tf.arguments,
+        reason: ''
+      };
+      approve.classList.add('selected');
+      reject.classList.remove('selected');
+      reason.style.display = 'none';
+      tag.textContent = edited ? '已决定：修改参数后批准' : '已决定：批准';
+      refreshSubmit();
+    };
+    reject.onclick = () => {
+      decisions[tf.id].result = 'REJECTED';
+      reject.classList.add('selected');
+      approve.classList.remove('selected');
+      reason.style.display = 'block';
+      tag.textContent = '已决定：拒绝';
+      refreshSubmit();
+    };
+    reason.oninput = () => { decisions[tf.id].reason = reason.value; };
+
+    actions.appendChild(approve);
+    actions.appendChild(reject);
+    actions.appendChild(tag);
+    card.appendChild(h3);
+    card.appendChild(desc);
+    card.appendChild(args);
+    card.appendChild(actions);
+    card.appendChild(reason);
+    messagesEl.appendChild(card);
+    cards.push({ card, approve, reject, args, reason });
+  });
+
+  const submit = document.createElement('button');
+  submit.id = 'submitDecisions';
+  submit.textContent = '提交确认，继续执行';
+  submit.disabled = true;
+  messagesEl.appendChild(submit);
+
+  function refreshSubmit() {
+    submit.disabled = Object.values(decisions).some(d => !d.result);
+  }
+
+  submit.onclick = () => {
+    submit.disabled = true;
+    cards.forEach(c => {
+      c.approve.disabled = true;
+      c.reject.disabled = true;
+      c.args.readOnly = true;
+      c.reason.readOnly = true;
+    });
+    const feedbacks = frame.feedbacks.map(tf => {
+      const d = decisions[tf.id];
+      const item = { id: tf.id, result: d.result };
+      if (d.result === 'EDITED') item.arguments = d.arguments;
+      if (d.result === 'REJECTED') item.reason = d.reason;
+      return item;
+    });
+    addStatus('已提交人工确认，恢复执行');
+    runStream('/chat/resume', { threadId, feedbacks });
+  };
+  scrollBottom();
+}
+
+async function runStream(url, body) {
+  setBusy(true);
+  currentAssistant = null;
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) {
+      let msg = resp.statusText;
+      try { const j = await resp.json(); msg = j.message || j.error || msg; } catch {}
+      addStatus('请求失败：' + msg, true);
+      return;
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split('\n\n');
+      buffer = blocks.pop();
+      for (const block of blocks) {
+        const data = block.split('\n')
+          .filter(l => l.startsWith('data:'))
+          .map(l => l.slice(5).trim())
+          .join('');
+        if (!data) continue;
+        let frame;
+        try { frame = JSON.parse(data); } catch { continue; }
+        handleFrame(frame);
+      }
+    }
+  } catch (e) {
+    addStatus('连接异常：' + e.message, true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+function handleFrame(frame) {
+  switch (frame.type) {
+    case 'routing': {
+      const names = { GUIDE: '导购', TRADE: '交易', AFTER_SALE: '售后' };
+      addStatus('意图路由 → ' + (names[frame.route] || frame.route));
+      break;
+    }
+    case 'delta': {
+      const a = ensureAssistant(frame.agent);
+      a.raw += frame.text;
+      renderMarkdown(a.bubble, a.raw);
+      scrollBottom();
+      break;
+    }
+    case 'tool_call':
+      (frame.toolCalls || []).forEach(tc => addToolCall(frame.agent, tc));
+      break;
+    case 'tool_result':
+      (frame.responses || []).forEach(r => addToolResult(frame.agent, r));
+      break;
+    case 'interrupt':
+      addInterruptCard(frame);
+      break;
+    case 'error':
+      addStatus('错误：' + frame.message, true);
+      break;
+    case 'done':
+      currentAssistant = null;
+      break;
+  }
+}
+
+function scrollBottom() {
+  scrollArea.scrollTop = scrollArea.scrollHeight;
+}
+</script>
+</body>
+</html>
