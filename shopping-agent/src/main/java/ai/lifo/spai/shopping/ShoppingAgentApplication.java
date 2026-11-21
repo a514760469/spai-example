@@ -24,9 +24,11 @@ public class ShoppingAgentApplication {
             String port = environment.getProperty("server.port", "8080");
             String contextPath = environment.getProperty("server.servlet.context-path", "");
             String accessUrl = "http://localhost:" + port + contextPath + "/chatui/index.html";
+            String chatUrl = "http://localhost:" + port + contextPath + "/chat.html";
             System.out.println("\n🎉========================================🎉");
             System.out.println("✅ Application is ready!");
             System.out.println("🚀 Chat with you agent: " + accessUrl);
+            System.out.println("🚀 Chat with you shopping agent: " + chatUrl);
             System.out.println("🎉========================================🎉\n");
         };
     }

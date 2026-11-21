@@ -11,7 +11,7 @@ spring:
             api-key: ${AI_DASHSCOPE_API_KEY}
             chat:
                 options:
-                    model: qwen3.8-flash
+                    model: qwen3.8-max-0902
                     multi-model: true
             embedding:
                 options:
@@ -42,6 +42,9 @@ server:
             force-request: true
             force-response: true
     port: 8080
+
+# Mock Platform Secret
+shopping.mock.platform-secret: mock-platform-secret-key
 
 logging:
     level:

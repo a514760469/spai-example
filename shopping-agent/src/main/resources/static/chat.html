@@ -28,11 +28,34 @@
   body {
     font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
     background: var(--background); color: var(--foreground);
-    height: 100vh; display: flex; flex-direction: column;
+    height: 100vh; display: flex; flex-direction: row;
     -webkit-font-smoothing: antialiased;
   }
   button { font-family: inherit; cursor: pointer; transition: all .15s cubic-bezier(.4,0,.2,1); }
   button:disabled { opacity: .5; cursor: not-allowed; }
+
+  #sidebar {
+    width: 250px; flex-shrink: 0; border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; background: #fafafa;
+  }
+  .sideHead {
+    padding: 14px 16px; font-size: .8125rem; font-weight: 600; color: var(--muted-foreground);
+    display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border);
+  }
+  #refreshThreads { border: none; background: none; color: var(--muted-foreground); font-size: 1rem; padding: 2px 8px; border-radius: 6px; }
+  #refreshThreads:hover { background: var(--border); }
+  #threadList { flex: 1; overflow-y: auto; padding: 8px; }
+  .threadItem {
+    display: block; width: 100%; text-align: left; border: 1px solid transparent; background: none;
+    border-radius: var(--radius); padding: 9px 12px; margin-bottom: 4px;
+  }
+  .threadItem:hover { background: var(--muted); }
+  .threadItem.active { background: var(--background); border-color: var(--border); box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .tTitle { font-size: .875rem; color: var(--foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tTime { font-size: .75rem; color: var(--muted-foreground); margin-top: 2px; }
+  .sideEmpty { font-size: .8125rem; color: var(--muted-foreground); text-align: center; padding: 24px 12px; }
+  #main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; }
+  @media (max-width: 768px) { #sidebar { display: none; } }
 
   header {
     position: sticky; top: 0; z-index: 10;
@@ -170,6 +193,11 @@
 </style>
 </head>
 <body>
+<aside id="sidebar">
+  <div class="sideHead">历史会话 <button id="refreshThreads" title="刷新列表">↻</button></div>
+  <div id="threadList"></div>
+</aside>
+<div id="main">
 <header>
   <div class="logo">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
@@ -192,7 +220,7 @@
       <div class="suggestions">
         <button data-q="帮我找一款 3000 元以内、拍照好的智能手机，对比几款给我推荐">📱 找手机<span class="hint">对比推荐，附理由</span></button>
         <button data-q="我想看看最近有什么值得买的数码配件，预算 200 元">🎧 逛配件<span class="hint">按预算筛选</span></button>
-        <button data-q="帮我查一下我的订单和物流状态">📦 查订单<span class="hint">需要 sessionId</span></button>
+        <button data-q="帮我查一下我的订单和物流状态">📦 查订单<span class="hint">需要登录</span></button>
       </div>
     </div>
   </div>
@@ -206,6 +234,7 @@
   </div>
   <div class="footHint">敏感操作（支付 / 取消订单 / 退货）执行前会弹出确认卡片，批准后才真正执行</div>
 </footer>
+</div>
 <script>
 const scrollArea = document.getElementById('scrollArea');
 const messagesEl = document.getElementById('messages');
@@ -232,7 +261,99 @@ document.getElementById('newChat').onclick = () => {
   messagesEl.appendChild(welcomeTemplate.cloneNode(true));
   currentAssistant = null;
   toolDetailsById = {};
+  markActiveThread();
 };
+
+const threadListEl = document.getElementById('threadList');
+document.getElementById('refreshThreads').onclick = loadThreads;
+
+async function loadThreads() {
+  try {
+    const resp = await fetch('/chat/threads');
+    if (!resp.ok) return;
+    const list = await resp.json();
+    threadListEl.innerHTML = '';
+    if (!list.length) {
+      const empty = div('sideEmpty');
+      empty.textContent = '暂无历史会话';
+      threadListEl.appendChild(empty);
+      return;
+    }
+    for (const t of list) {
+      const b = document.createElement('button');
+      b.className = 'threadItem' + (t.threadId === threadId ? ' active' : '');
+      b.dataset.id = t.threadId;
+      const title = div('tTitle');
+      title.textContent = t.title || ('会话 ' + t.threadId.slice(0, 8));
+      const time = div('tTime');
+      time.textContent = t.lastActive ? fmtTime(t.lastActive) : '';
+      b.appendChild(title);
+      b.appendChild(time);
+      b.onclick = () => switchThread(t.threadId);
+      threadListEl.appendChild(b);
+    }
+  } catch {}
+}
+
+function markActiveThread() {
+  threadListEl.querySelectorAll('.threadItem').forEach(el =>
+    el.classList.toggle('active', el.dataset.id === threadId));
+}
+
+function fmtTime(epochSeconds) {
+  const d = new Date(epochSeconds * 1000);
+  const now = new Date();
+  const hm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  if (d.toDateString() === now.toDateString()) return hm;
+  return (d.getMonth() + 1) + '-' + d.getDate() + ' ' + hm;
+}
+
+async function switchThread(id) {
+  if (busy || id === threadId) return;
+  threadId = id;
+  localStorage.setItem('chatThreadId', id);
+  threadChip.textContent = '会话 ' + id.slice(0, 8);
+  markActiveThread();
+  await loadHistory();
+}
+
+async function loadHistory() {
+  let list = [];
+  try {
+    const resp = await fetch('/chat/history?threadId=' + encodeURIComponent(threadId));
+    if (resp.ok) list = await resp.json();
+  } catch {}
+  renderHistory(list);
+}
+
+function renderHistory(list) {
+  messagesEl.innerHTML = '';
+  currentAssistant = null;
+  toolDetailsById = {};
+  if (!list.length) {
+    messagesEl.appendChild(welcomeTemplate.cloneNode(true));
+    return;
+  }
+  for (const m of list) {
+    if (m.role === 'user') {
+      addUserRow(m.text);
+    } else {
+      const row = div('row assistant');
+      const tag = div('agentTag');
+      tag.innerHTML = '<span class="dot"></span>';
+      tag.appendChild(document.createTextNode('助手'));
+      const bubble = div('bubble md');
+      renderMarkdown(bubble, m.text);
+      row.appendChild(tag);
+      row.appendChild(bubble);
+      messagesEl.appendChild(row);
+    }
+  }
+  scrollBottom();
+}
+
+loadThreads();
+loadHistory();
 
 messagesEl.addEventListener('click', e => {
   const btn = e.target.closest('.suggestions button');
@@ -508,6 +629,7 @@ async function runStream(url, body) {
     addStatus('连接异常：' + e.message, true);
   } finally {
     setBusy(false);
+    loadThreads();
   }
 }
 

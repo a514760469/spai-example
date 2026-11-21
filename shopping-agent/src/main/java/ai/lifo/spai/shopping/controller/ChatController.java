@@ -9,6 +9,8 @@ import com.alibaba.cloud.ai.graph.action.InterruptionMetadata.ToolFeedback.Feedb
 import com.alibaba.cloud.ai.graph.streaming.OutputType;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.validation.constraints.NotEmpty;
+import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -17,14 +19,14 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +37,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * <pre>
  * POST /chat/stream  {threadId, message}   → delta / tool_call / tool_result / routing / interrupt / done
  * POST /chat/resume  {threadId, feedbacks} → 从 MysqlSaver checkpoint 恢复子图，继续推流
+ * GET  /chat/threads                       → 历史会话列表（父线程，按最近活跃排序）
+ * GET  /chat/history?threadId=             → 会话消息记录（用户 + 助手最终回复）
  * </pre>
  * 中断时子图 checkpoint 落在 {threadId}_subgraph_{agentName}，父图 checkpoint 的 nextNodeId
  * 指向子图节点（ResumableSubGraphAction），resume 带 HUMAN_FEEDBACK metadata 即可自动接力。
@@ -52,24 +56,98 @@ public class ChatController {
     private static final int TOOL_RESULT_MAX_LENGTH = 4000;
 
     private final CompiledGraph shoppingGraph;
+
     private final ObjectMapper objectMapper;
+
+    private final JdbcTemplate jdbcTemplate;
 
     private final Map<String, InterruptionMetadata> pendingInterrupts = new ConcurrentHashMap<>();
 
-    public record ChatRequest(String threadId, String message) {
+    public record ChatRequest(@NotEmpty(message = "threadId 不能为空") String threadId,
+                              @NotEmpty(message = "message 不能为空") String message) {
     }
 
-    public record ResumeRequest(String threadId, List<Decision> feedbacks) {
+    public record ResumeRequest(@NotEmpty(message = "threadId 不能为空") String threadId,
+                                @NonNull List<Decision> feedbacks) {
     }
 
     public record Decision(String id, String result, String arguments, String reason) {
     }
 
-    @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<ServerSentEvent<String>> stream(@RequestBody ChatRequest request) {
-        if (!StringUtils.hasText(request.threadId()) || !StringUtils.hasText(request.message())) {
-            return Flux.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "threadId 和 message 不能为空"));
+    public record ThreadSummary(String threadId, String title, long lastActive) {
+    }
+
+    public record HistoryMessage(String role, String text) {
+    }
+
+    /**
+     * 历史会话列表：只列父线程（子图线程是内部实现），按最近活跃排序。
+     * 标题取首条用户消息；GRAPH_THREAD 无创建时间，用最新 checkpoint 时间代替。
+     */
+    @GetMapping("/threads")
+    public List<ThreadSummary> threads() {
+        record Row(String threadName, long lastActive) {
         }
+        List<Row> rows = jdbcTemplate.query("""
+                SELECT t.thread_name, UNIX_TIMESTAMP(MAX(c.saved_at)) AS last_active
+                FROM GRAPH_THREAD t
+                LEFT JOIN GRAPH_CHECKPOINT c ON c.thread_id = t.thread_id
+                WHERE t.is_released = FALSE AND t.thread_name NOT LIKE '%\\_subgraph\\_%'
+                GROUP BY t.thread_name
+                ORDER BY last_active DESC
+                """, (rs, i) -> new Row(rs.getString("thread_name"), rs.getLong("last_active")));
+
+        List<ThreadSummary> result = new ArrayList<>(rows.size());
+        for (Row row : rows) {
+            result.add(new ThreadSummary(row.threadName(), firstUserMessage(row.threadName()), row.lastActive()));
+        }
+        return result;
+    }
+
+    /**
+     * 会话历史：父图最新 checkpoint 的 messages 即"用户输入 + 子 agent 最终回复"序列，
+     * 与聊天 UI 展示粒度一致（工具中间过程在子图 checkpoint，不回看）。
+     */
+    @GetMapping("/history")
+    public List<HistoryMessage> history(@RequestParam String threadId) {
+        return shoppingGraph.stateOf(RunnableConfig.builder().threadId(threadId).build())
+                .map(snapshot -> {
+                    List<?> messages = snapshot.state().<List<?>>value("messages").orElse(List.of());
+                    List<HistoryMessage> result = new ArrayList<>();
+                    for (Object message : messages) {
+                        if (message instanceof UserMessage user) {
+                            result.add(new HistoryMessage("user", user.getText()));
+                        }
+                        else if (message instanceof AssistantMessage assistant
+                                && StringUtils.hasText(assistant.getText())) {
+                            result.add(new HistoryMessage("assistant", assistant.getText()));
+                        }
+                    }
+                    return result;
+                })
+                .orElse(List.of());
+    }
+
+    private String firstUserMessage(String threadId) {
+        try {
+            List<?> messages = shoppingGraph.stateOf(RunnableConfig.builder().threadId(threadId).build())
+                    .map(snapshot -> snapshot.state().<List<?>>value("messages").orElse(List.of()))
+                    .orElse(List.of());
+            for (Object message : messages) {
+                if (message instanceof UserMessage user && StringUtils.hasText(user.getText())) {
+                    String text = user.getText();
+                    return text.length() <= 30 ? text : text.substring(0, 30) + "…";
+                }
+            }
+        }
+        catch (Exception e) {
+            log.warn("读取会话标题失败, thread={}: {}", threadId, e.getMessage());
+        }
+        return "会话 " + threadId.substring(0, Math.min(8, threadId.length()));
+    }
+
+    @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<String>> stream(@Validated @RequestBody ChatRequest request) {
         Map<String, Object> inputs = Map.of(
                 "input", request.message(),
                 "messages", List.of(new UserMessage(request.message())));
@@ -79,9 +157,6 @@ public class ChatController {
 
     @PostMapping(value = "/resume", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> resume(@RequestBody ResumeRequest request) {
-        if (!StringUtils.hasText(request.threadId())) {
-            return Flux.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "threadId 不能为空"));
-        }
         InterruptionMetadata pending = pendingInterrupts.remove(request.threadId());
         if (pending == null) {
             return Flux.error(new ResponseStatusException(HttpStatus.CONFLICT, "该会话没有待确认的操作"));
@@ -132,7 +207,7 @@ public class ChatController {
     private Flux<ServerSentEvent<String>> toSse(Flux<NodeOutput> graphStream, String threadId) {
         return graphStream
                 .concatMap(output -> Flux.fromIterable(toFrames(output, threadId)))
-                .map(frame -> sse(frame))
+                .map(this::sse)
                 .concatWith(Flux.just(sse(Map.of("type", "done"))))
                 .onErrorResume(e -> {
                     log.error("chat stream error, thread={}", threadId, e);
@@ -163,7 +238,7 @@ public class ChatController {
         if (output instanceof StreamingOutput<?> streaming) {
             OutputType outputType = streaming.getOutputType();
             if (outputType == OutputType.AGENT_MODEL_STREAMING) {
-                String chunk = streaming.chunk();
+                String chunk = streaming.message().getText();
                 if (!StringUtils.hasText(chunk) && streaming.message() instanceof AssistantMessage assistant) {
                     chunk = assistant.getText();
                 }
