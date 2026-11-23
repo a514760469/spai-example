@@ -57,7 +57,7 @@ public class CredentialStore {
      * @param threadId
      * @return
      */
-    private static String rootThreadId(String threadId) {
+    static String rootThreadId(String threadId) {
         int i = threadId.indexOf("_subgraph_");
         return i > 0 ? threadId.substring(0, i) : threadId;
     }

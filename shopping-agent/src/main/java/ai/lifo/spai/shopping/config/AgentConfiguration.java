@@ -2,7 +2,9 @@ package ai.lifo.spai.shopping.config;
 
 import ai.lifo.spai.shopping.creds.CredentialInjectingToolCallback;
 import ai.lifo.spai.shopping.creds.CredentialStore;
+import ai.lifo.spai.shopping.creds.IdempotentToolCallback;
 import ai.lifo.spai.shopping.graph.IntentRouterNode;
+import ai.lifo.spai.shopping.store.LedgerStore;
 import ai.lifo.spai.shopping.tool.LoginTool;
 import com.alibaba.cloud.ai.graph.CompileConfig;
 import com.alibaba.cloud.ai.graph.CompiledGraph;
@@ -65,7 +67,7 @@ public class AgentConfiguration {
 
     private static final Set<String> TRADE_TOOLS = Set.of(
             "searchProducts", "getProductDetails", // 交易域补搜索功能
-            "addToCart", "checkout", "getAddresses", "selectAddress",
+            "addToCart", "getCart", "checkout", "getAddresses", "selectAddress",
             "initiatePayment", "getPaymentStatus");
 
     private static final Set<String> AFTER_SALE_TOOLS = Set.of(
@@ -132,15 +134,21 @@ public class AgentConfiguration {
      * 导购助手 agent，负责商品发现与推荐
      */
     @Bean
-    public ReactAgent guideAgent(ChatModel chatModel, ToolCallbackProvider toolCallbackProvider, MysqlSaver mysqlSaver) {
-        return domainAgent("guide-agent", GUIDE_PROMPT, GUIDE_TOOLS, chatModel, toolCallbackProvider, mysqlSaver);
+    public ReactAgent guideAgent(ChatModel chatModel,
+                                 ToolCallbackProvider toolCallbackProvider,
+                                 LedgerStore ledgerStore,
+                                 MysqlSaver mysqlSaver) {
+        return domainAgent("guide-agent", GUIDE_PROMPT, GUIDE_TOOLS, chatModel, toolCallbackProvider, mysqlSaver, ledgerStore);
     }
 
     /**
      * 交易助手 agent，负责购物车、结算、地址与支付
      */
     @Bean
-    public ReactAgent tradeAgent(ChatModel chatModel, ToolCallbackProvider toolCallbackProvider, MysqlSaver mysqlSaver) {
+    public ReactAgent tradeAgent(ChatModel chatModel,
+                                 ToolCallbackProvider toolCallbackProvider,
+                                 LedgerStore ledgerStore,
+                                 MysqlSaver mysqlSaver) {
         // 工具调用限制
         ToolCallLimitHook callLimitHook = ToolCallLimitHook.builder()
                 .toolName("initiatePayment")
@@ -149,6 +157,7 @@ public class AgentConfiguration {
                 .build();
 
         return domainAgent("trade-agent", TRADE_PROMPT, TRADE_TOOLS, chatModel, toolCallbackProvider, mysqlSaver,
+                ledgerStore,
 //                callLimitHook,
                 HumanInTheLoopHook.builder()
                         .approvalOn("initiatePayment", "发起支付，将从用户账户扣款，不可逆")
@@ -159,8 +168,12 @@ public class AgentConfiguration {
      * 售后助手 agent，负责订单、物流、退换货、评价与客服工单
      */
     @Bean
-    public ReactAgent afterSaleAgent(ChatModel chatModel, ToolCallbackProvider toolCallbackProvider, MysqlSaver mysqlSaver) {
+    public ReactAgent afterSaleAgent(ChatModel chatModel,
+                                     ToolCallbackProvider toolCallbackProvider,
+                                     LedgerStore ledgerStore,
+                                     MysqlSaver mysqlSaver) {
         return domainAgent("after-sale-agent", AFTER_SALE_PROMPT, AFTER_SALE_TOOLS, chatModel, toolCallbackProvider, mysqlSaver,
+                ledgerStore,
                 HumanInTheLoopHook.builder()
                         .approvalOn("cancelOrder", "取消订单，不可逆")
                         .approvalOn("returnOrderItem", "发起退货，将触发退款流程")
@@ -207,11 +220,13 @@ public class AgentConfiguration {
                                    ChatModel chatModel,
                                    ToolCallbackProvider toolCallbackProvider,
                                    MysqlSaver saver,
+                                   LedgerStore ledgerStore,
                                    Hook... hooks) {
 
         List<ToolCallback> tools = Arrays.stream(toolCallbackProvider.getToolCallbacks())
                 .filter(cb -> toolNames.contains(cb.getToolDefinition().name()))
                 .map(cb -> (ToolCallback) new CredentialInjectingToolCallback(cb, credentialStore, objectMapper))
+                .map(cb -> (ToolCallback) new IdempotentToolCallback(cb, ledgerStore, objectMapper))
                 .collect(Collectors.toCollection(ArrayList::new));
 
         // 构造 login 的 ToolCallback（Spring AI 标准 API）

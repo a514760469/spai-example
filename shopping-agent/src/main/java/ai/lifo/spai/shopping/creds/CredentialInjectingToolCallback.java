@@ -30,7 +30,7 @@ public class CredentialInjectingToolCallback implements StateAwareToolCallback {
 
     private static final String SESSION_ID = "sessionId";
 
-    private static final String NOT_LOGGED_IN = """
+    static final String NOT_LOGGED_IN = """
                 {"status":"error","code":"NOT_LOGGED_IN","message":"用户尚未登录。请先询问用户手机号并调用 loginByPhoneNumber 完成登录，然后重试本操作。"}
             """;
 
@@ -129,7 +129,7 @@ public class CredentialInjectingToolCallback implements StateAwareToolCallback {
     private record McpContent(String type, String text) {}
 
     /**
-     * 剥掉 MCP 返回的消息壳
+     * 剥掉 MCP 返回的消息壳，节省token
      * - 不是 content 数组形态，原样透传
      */
     private String unwrapResult(String raw) {

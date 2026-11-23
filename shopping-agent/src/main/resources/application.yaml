@@ -11,7 +11,7 @@ spring:
             api-key: ${AI_DASHSCOPE_API_KEY}
             chat:
                 options:
-                    model: qwen3.8-max-0902
+                    model: qwen4-max
                     multi-model: true
             embedding:
                 options:
@@ -30,7 +30,7 @@ spring:
                         ecom-mock:
                             url: "http://localhost:8000"
                             sse-endpoint: "/sse"
-                request-timeout: 600s
+                request-timeout: 60s
     data:
         redis:
             host: 127.0.0.1
