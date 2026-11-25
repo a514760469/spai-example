@@ -1,5 +1,6 @@
 package ai.lifo.spai.shopping.controller;
 
+import ai.lifo.spai.shopping.memory.MemoryExtractionService;
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
@@ -9,6 +10,7 @@ import com.alibaba.cloud.ai.graph.action.InterruptionMetadata.ToolFeedback.Feedb
 import com.alibaba.cloud.ai.graph.streaming.OutputType;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
@@ -60,6 +62,10 @@ public class ChatController {
     private final ObjectMapper objectMapper;
 
     private final JdbcTemplate jdbcTemplate;
+
+    private final MemoryExtractionService memoryExtractionService;
+
+    private final MeterRegistry meterRegistry;
 
     private final Map<String, InterruptionMetadata> pendingInterrupts = new ConcurrentHashMap<>();
 
@@ -152,7 +158,9 @@ public class ChatController {
                 "input", request.message(),
                 "messages", List.of(new UserMessage(request.message())));
         RunnableConfig config = RunnableConfig.builder().threadId(request.threadId()).build();
-        return toSse(shoppingGraph.stream(inputs, config), request.threadId());
+        // 流正常结束后异步抽取长期记忆；不应答路径、不阻塞用户
+        return toSse(shoppingGraph.stream(inputs, config), request.threadId())
+                .doOnComplete(() -> memoryExtractionService.extractAsync(request.threadId()));
     }
 
     @PostMapping(value = "/resume", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -195,6 +203,8 @@ public class ChatController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "非法 result: " + decision.result());
         }
         builder.result(result);
+        meterRegistry.counter("shopping.hitl.events", "event", "decision",
+                "tool", tf.getName(), "result", result.name()).increment();
         if (result == FeedbackResult.EDITED && StringUtils.hasText(decision.arguments())) {
             builder.arguments(decision.arguments());
         }
@@ -218,6 +228,8 @@ public class ChatController {
     private List<Map<String, Object>> toFrames(NodeOutput output, String threadId) {
         if (output instanceof InterruptionMetadata interruption) {
             pendingInterrupts.put(threadId, interruption);
+            interruption.toolFeedbacks().forEach(tf -> meterRegistry
+                    .counter("shopping.hitl.events", "event", "interrupted", "tool", tf.getName()).increment());
             List<Map<String, Object>> feedbacks = interruption.toolFeedbacks().stream()
                     .map(tf -> Map.<String, Object>of(
                             "id", tf.getId(),

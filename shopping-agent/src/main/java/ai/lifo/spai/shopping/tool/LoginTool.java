@@ -65,7 +65,10 @@ public class LoginTool {
                     "phoneNumber", phoneNumber, "platform", "shopping-agent", "secret", platformSecret));
 
             // SyncMcpToolCallback.call 返回的是 content 数组 [{"type":"text","text":...}]，不是工具文本本身
-            McpContent[] contents = objectMapper.readValue(loginCallback.call(args), McpContent[].class);
+            String call = loginCallback.call(args);
+            log.info("工具返回: {}", call);
+            McpContent[] contents = objectMapper.readValue(call, McpContent[].class);
+
             // 服务端 @Tool 返回 String 会被 Spring AI 再包一层 JSON 字符串（双重编码），两种形态都兼容
             Object payload = objectMapper.readValue(contents[0].text(), Object.class);
             LoginResult resp = payload instanceof String s

@@ -11,7 +11,7 @@ spring:
             api-key: ${AI_DASHSCOPE_API_KEY}
             chat:
                 options:
-                    model: qwen4-max
+                    model: deepseek-v4.1-flash-1017
                     multi-model: true
             embedding:
                 options:
@@ -20,6 +20,8 @@ spring:
             rerank:
                 options:
                     model: qwen3.7-text-rerank
+                    # DashScopeRerankOptions.topN 默认 3
+                    top-n: 5
         mcp:
             client:
                 enabled: true
@@ -31,10 +33,16 @@ spring:
                             url: "http://localhost:8000"
                             sse-endpoint: "/sse"
                 request-timeout: 60s
+        vectorstore:
+            redis:
+                initialize-schema: true
+                index-name: product-idx
+                prefix: "product:"
     data:
         redis:
             host: 127.0.0.1
             password: 123456
+            port: 6379
 server:
     servlet:
         encoding:
@@ -45,6 +53,24 @@ server:
 
 # Mock Platform Secret
 shopping.mock.platform-secret: mock-platform-secret-key
+
+# RAG 商品索引数据源（server REST，注意 0-based 分页）
+product:
+    base-url: http://localhost:8000
+
+# 长期记忆抽取模型（使用flash模型）
+memory:
+    extract-model: qwen-flash
+
+# 可观测：Prometheus 抓取端点（默认只暴露 health）
+management:
+    endpoints:
+        web:
+            exposure:
+                include: health,info,prometheus
+    metrics:
+        tags:
+            application: ${spring.application.name}
 
 logging:
     level:

@@ -3,6 +3,7 @@ package ai.lifo.spai.shopping.graph;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.action.NodeActionWithConfig;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.Message;
@@ -40,15 +41,19 @@ public class IntentRouterNode implements NodeActionWithConfig {
             规则：
             1. 以最新一条用户消息为主，结合上文消解指代（"这个""刚才那件"指向上一轮讨论的商品或订单）。
             2. 一条消息涉及多个意图时，选择用户当前最需要执行的动作。
-            3. 无法判断时输出 GUIDE。
+            3. 消息同时包含商品描述和执行指令（"买X下单支付""帮我付款"）时，执行指令优先，输出 TRADE。
+            4. 无法判断时输出 GUIDE。
             """;
 
     private static final Pattern INTENT_PATTERN = Pattern.compile("GUIDE|TRADE|AFTER_SALE");
 
     private final ChatClient routerChatClient;
 
-    public IntentRouterNode(ChatClient routerChatClient) {
+    private final MeterRegistry meterRegistry;
+
+    public IntentRouterNode(ChatClient routerChatClient, MeterRegistry meterRegistry) {
         this.routerChatClient = routerChatClient;
+        this.meterRegistry = meterRegistry;
     }
 
     @Override
@@ -67,6 +72,7 @@ public class IntentRouterNode implements NodeActionWithConfig {
             log.warn("intent routing failed, fallback to GUIDE: {}", e.getMessage());
         }
         log.info("intent routed to 【{}】, threadId={}", intent, config.threadId().orElse("-"));
+        meterRegistry.counter("shopping.route.decisions", "route", intent.name()).increment();
         return Map.of(ROUTE_KEY, intent.name());
     }
 

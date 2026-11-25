@@ -8,6 +8,7 @@ import com.alibaba.cloud.ai.graph.agent.tools.ToolContextConstants;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
@@ -24,6 +25,7 @@ import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import static ai.lifo.spai.shopping.creds.CredentialStore.rootThreadId;
 
@@ -50,12 +52,15 @@ public class IdempotentToolCallback implements StateAwareToolCallback {
     private final ToolCallback delegate;
     private final LedgerStore ledger;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
     private final boolean isWrite;
 
-    public IdempotentToolCallback(ToolCallback delegate, LedgerStore ledger, ObjectMapper objectMapper) {
+    public IdempotentToolCallback(ToolCallback delegate, LedgerStore ledger, ObjectMapper objectMapper,
+                                  MeterRegistry meterRegistry) {
         this.delegate = delegate;
         this.ledger = ledger;
         this.objectMapper = objectMapper;
+        this.meterRegistry = meterRegistry;
         this.isWrite = WRITE_TOOLS.contains(delegate.getToolDefinition().name());
     }
 
@@ -76,6 +81,22 @@ public class IdempotentToolCallback implements StateAwareToolCallback {
 
     @Override
     public String call(String toolInput, ToolContext toolContext) {
+        // 耗时以真实执行为准；账本拦截/回放路径不触网，单独用 ledger.events 计数
+        String tool = getToolDefinition().name();
+        long start = System.nanoTime();
+        String outcome = "error";
+        try {
+            String result = doCall(toolInput, toolContext);
+            outcome = "success";
+            return result;
+        }
+        finally {
+            meterRegistry.timer("shopping.tool.duration", "tool", tool, "outcome", outcome)
+                    .record(System.nanoTime() - start, TimeUnit.NANOSECONDS);
+        }
+    }
+
+    private String doCall(String toolInput, ToolContext toolContext) {
         log.info("调用工具：{} {}", getToolDefinition().name(), toolInput);
         if (!isWrite) {
             // 读工具：本次不分级重试，先只做写保护
@@ -95,6 +116,8 @@ public class IdempotentToolCallback implements StateAwareToolCallback {
             log.info("幂等拦截：{} key={} existingStatus={} 返回={}",
                     getToolDefinition().name(), key,
                     begin.existing() == null ? null : begin.existing().getStatus(), blockedResult);
+            ledger("blocked_" + (begin.existing() == null ? "unknown_hint"
+                    : begin.existing().getStatus().toLowerCase()));
             return blockedResult;
         }
 
@@ -103,9 +126,11 @@ public class IdempotentToolCallback implements StateAwareToolCallback {
             if (isRejection(result)) {
                 // 确定性拒绝，删掉数据放行
                 ledger.release(key);
+                ledger("released_reject");
             }
             else {
                 ledger.markSuccess(key, result);
+                ledger("success");
             }
             return result;
         }
@@ -115,9 +140,11 @@ public class IdempotentToolCallback implements StateAwareToolCallback {
             // 不能一律当"确定性业务拒绝"。本 server 的拒绝走普通返回 status=error，由 isRejection 处理。
             if (provedNotSent(e)) {
                 ledger.release(key);
+                ledger("released_connfail");
             }
             else {
                 ledger.markUnknown(key);
+                ledger("marked_unknown");
             }
             throw e;
         }
@@ -126,6 +153,7 @@ public class IdempotentToolCallback implements StateAwareToolCallback {
             // ConnectException 类：确证没到达
             if (provedNotSent(e)) {
                 ledger.release(key);
+                ledger("released_connfail");
                 // 交给模型，它重试时同键可重新登记
                 throw e;
             }
@@ -133,8 +161,14 @@ public class IdempotentToolCallback implements StateAwareToolCallback {
             // 同键重试会拿到一次有界重发额度（LedgerStore.rearmUnknown）；
             // 再次超时则额度用尽，同键走 blocked() 强制对账
             ledger.markUnknown(key);
+            ledger("marked_unknown");
             throw new ToolExecutionException(getToolDefinition(), e);
         }
+    }
+
+    private void ledger(String event) {
+        meterRegistry.counter("shopping.ledger.events",
+                "tool", getToolDefinition().name(), "event", event).increment();
     }
 
     /**

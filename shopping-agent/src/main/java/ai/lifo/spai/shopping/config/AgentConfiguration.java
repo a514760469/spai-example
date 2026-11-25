@@ -4,8 +4,11 @@ import ai.lifo.spai.shopping.creds.CredentialInjectingToolCallback;
 import ai.lifo.spai.shopping.creds.CredentialStore;
 import ai.lifo.spai.shopping.creds.IdempotentToolCallback;
 import ai.lifo.spai.shopping.graph.IntentRouterNode;
+import ai.lifo.spai.shopping.memory.MemoryRecallTool;
+import ai.lifo.spai.shopping.memory.UserProfileHook;
 import ai.lifo.spai.shopping.store.LedgerStore;
 import ai.lifo.spai.shopping.tool.LoginTool;
+import ai.lifo.spai.shopping.tool.ProductRagSearchTool;
 import com.alibaba.cloud.ai.graph.CompileConfig;
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.KeyStrategyFactory;
@@ -22,6 +25,7 @@ import com.alibaba.cloud.ai.graph.exception.GraphStateException;
 import com.alibaba.cloud.ai.graph.state.strategy.AppendStrategy;
 import com.alibaba.cloud.ai.graph.state.strategy.ReplaceStrategy;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
@@ -63,7 +67,7 @@ public class AgentConfiguration {
     private static final Set<String> GUIDE_TOOLS = Set.of(
             "searchProducts", "filterProducts", "getFilters", "getSortOptions",
             "getProductDetails", "getProductReviews", "getDeliveryTime",
-            "getWishlist", "addToWishlist");
+            "getWishlist", "addToWishlist", "productRagSearch");
 
     private static final Set<String> TRADE_TOOLS = Set.of(
             "searchProducts", "getProductDetails", // 交易域补搜索功能
@@ -83,6 +87,8 @@ public class AgentConfiguration {
             - 需求模糊时先追问预算、用途、偏好，再检索。
             - 用户表达购买意愿时，说明将转入下单流程，并给出所选商品的 productId。
             - 用户报出手机号后直接调用 loginByPhoneNumber 完成登录；其余工具的凭证由系统自动携带，不要向用户索要 sessionId，也不要在回复中复述任何凭证。
+            - 用户描述需求（尤其是场景化/模糊/送礼类）时，直接调用 productRagSearch 做语义检索，不要用自身知识回答商品推荐；仅当 productRagSearch 返回 error 时才降级 searchProducts。
+            - 用户需求可能与此前交流过的偏好相关（如送过礼的长辈、常买类目、预算习惯）时，可调用 recallUserMemory 查询长期记忆；返回空则按正常流程继续，不要向用户提及"记忆"机制。
             """;
 
     private static final String TRADE_PROMPT = """
@@ -110,9 +116,17 @@ public class AgentConfiguration {
 
     private final LoginTool loginTool;
 
+    private final ProductRagSearchTool productRagSearchTool;
+
+    private final MemoryRecallTool memoryRecallTool;
+
+    private final UserProfileHook userProfileHook;
+
     private final CredentialStore credentialStore;
 
     private final ObjectMapper objectMapper;
+
+    private final MeterRegistry meterRegistry;
 
     /**
      * 父图与子 Agent 共享的 checkpoint saver（同一实例是子图线程命名与恢复的前提）
@@ -138,7 +152,25 @@ public class AgentConfiguration {
                                  ToolCallbackProvider toolCallbackProvider,
                                  LedgerStore ledgerStore,
                                  MysqlSaver mysqlSaver) {
-        return domainAgent("guide-agent", GUIDE_PROMPT, GUIDE_TOOLS, chatModel, toolCallbackProvider, mysqlSaver, ledgerStore);
+
+        List<ToolCallback> tools = Arrays.stream(toolCallbackProvider.getToolCallbacks())
+                .filter(cb -> GUIDE_TOOLS.contains(cb.getToolDefinition().name()))
+                .map(cb -> (ToolCallback) new CredentialInjectingToolCallback(cb, credentialStore, objectMapper))
+                .map(cb -> (ToolCallback) new IdempotentToolCallback(cb, ledgerStore, objectMapper, meterRegistry))
+                .collect(Collectors.toCollection(ArrayList::new));
+        // 构造 login 的 ToolCallback（Spring AI 标准 API）
+        ToolCallback loginCallback = MethodToolCallbackProvider.builder()
+                .toolObjects(loginTool).build().getToolCallbacks()[0];
+
+        ToolCallback ragCallback = MethodToolCallbackProvider.builder()
+                .toolObjects(productRagSearchTool).build().getToolCallbacks()[0];
+        ToolCallback memoryCallback = MethodToolCallbackProvider.builder()
+                .toolObjects(memoryRecallTool).build().getToolCallbacks()[0];
+        tools.add(loginCallback);
+        tools.add(ragCallback);
+        tools.add(memoryCallback);
+
+        return domainAgent("guide-agent", GUIDE_PROMPT, chatModel, tools, mysqlSaver);
     }
 
     /**
@@ -156,8 +188,19 @@ public class AgentConfiguration {
                 .exitBehavior(ToolCallLimitHook.ExitBehavior.END)
                 .build();
 
-        return domainAgent("trade-agent", TRADE_PROMPT, TRADE_TOOLS, chatModel, toolCallbackProvider, mysqlSaver,
-                ledgerStore,
+        List<ToolCallback> tools = Arrays.stream(toolCallbackProvider.getToolCallbacks())
+                .filter(cb -> TRADE_TOOLS.contains(cb.getToolDefinition().name()))
+                .map(cb -> (ToolCallback) new CredentialInjectingToolCallback(cb, credentialStore, objectMapper))
+                .map(cb -> (ToolCallback) new IdempotentToolCallback(cb, ledgerStore, objectMapper, meterRegistry))
+                .collect(Collectors.toCollection(ArrayList::new));
+        // 构造 login 的 ToolCallback（Spring AI 标准 API）
+        ToolCallback loginCallback = MethodToolCallbackProvider.builder()
+                .toolObjects(loginTool).build().getToolCallbacks()[0];
+        tools.add(loginCallback);
+
+
+        return domainAgent("trade-agent", TRADE_PROMPT, chatModel, tools, mysqlSaver,
+//                ledgerStore,
 //                callLimitHook,
                 HumanInTheLoopHook.builder()
                         .approvalOn("initiatePayment", "发起支付，将从用户账户扣款，不可逆")
@@ -172,8 +215,17 @@ public class AgentConfiguration {
                                      ToolCallbackProvider toolCallbackProvider,
                                      LedgerStore ledgerStore,
                                      MysqlSaver mysqlSaver) {
-        return domainAgent("after-sale-agent", AFTER_SALE_PROMPT, AFTER_SALE_TOOLS, chatModel, toolCallbackProvider, mysqlSaver,
-                ledgerStore,
+        List<ToolCallback> tools = Arrays.stream(toolCallbackProvider.getToolCallbacks())
+                .filter(cb -> AFTER_SALE_TOOLS.contains(cb.getToolDefinition().name()))
+                .map(cb -> (ToolCallback) new CredentialInjectingToolCallback(cb, credentialStore, objectMapper))
+                .map(cb -> (ToolCallback) new IdempotentToolCallback(cb, ledgerStore, objectMapper, meterRegistry))
+                .collect(Collectors.toCollection(ArrayList::new));
+        // 构造 login 的 ToolCallback（Spring AI 标准 API）
+        ToolCallback loginCallback = MethodToolCallbackProvider.builder()
+                .toolObjects(loginTool).build().getToolCallbacks()[0];
+        tools.add(loginCallback);
+
+        return domainAgent("after-sale-agent", AFTER_SALE_PROMPT, chatModel, tools, mysqlSaver,
                 HumanInTheLoopHook.builder()
                         .approvalOn("cancelOrder", "取消订单，不可逆")
                         .approvalOn("returnOrderItem", "发起退货，将触发退款流程")
@@ -194,7 +246,7 @@ public class AgentConfiguration {
                 IntentRouterNode.ROUTE_KEY, new ReplaceStrategy());
 
         StateGraph graph = new StateGraph("shopping-supervisor", keyStrategyFactory);
-        graph.addNode(IntentRouterNode.NODE_NAME, node_async(new IntentRouterNode(routerChatClient)));
+        graph.addNode(IntentRouterNode.NODE_NAME, node_async(new IntentRouterNode(routerChatClient, meterRegistry)));
         graph.addNode(guideAgent.name(), guideAgent.asNode(true, false));
         graph.addNode(tradeAgent.name(), tradeAgent.asNode(true, false));
         graph.addNode(afterSaleAgent.name(), afterSaleAgent.asNode(true, false));
@@ -214,27 +266,15 @@ public class AgentConfiguration {
                 .build());
     }
 
+    /**
+     *
+     */
     private ReactAgent domainAgent(String name,
                                    String systemPrompt,
-                                   Set<String> toolNames,
                                    ChatModel chatModel,
-                                   ToolCallbackProvider toolCallbackProvider,
+                                   List<ToolCallback> tools,
                                    MysqlSaver saver,
-                                   LedgerStore ledgerStore,
                                    Hook... hooks) {
-
-        List<ToolCallback> tools = Arrays.stream(toolCallbackProvider.getToolCallbacks())
-                .filter(cb -> toolNames.contains(cb.getToolDefinition().name()))
-                .map(cb -> (ToolCallback) new CredentialInjectingToolCallback(cb, credentialStore, objectMapper))
-                .map(cb -> (ToolCallback) new IdempotentToolCallback(cb, ledgerStore, objectMapper))
-                .collect(Collectors.toCollection(ArrayList::new));
-
-        // 构造 login 的 ToolCallback（Spring AI 标准 API）
-        ToolCallback loginCallback = MethodToolCallbackProvider.builder()
-                .toolObjects(loginTool).build().getToolCallbacks()[0];
-
-        tools.add(loginCallback);
-
 
         // 实测最长一轮 4 次模型调用，8 留一倍余量
         ModelCallLimitHook modelCallLimitHook = ModelCallLimitHook.builder()
@@ -244,6 +284,7 @@ public class AgentConfiguration {
 
         List<Hook> hookList = new ArrayList<>();
         hookList.add(modelCallLimitHook);
+        hookList.add(userProfileHook);
         if (hooks.length > 0) {
             hookList.addAll(Arrays.asList(hooks));
         }
