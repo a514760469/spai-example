@@ -1,5 +1,8 @@
 package ai.lifo.spai.shopping.controller;
 
+import ai.lifo.spai.shopping.history.ChatHistoryService;
+import ai.lifo.spai.shopping.history.ChatHistoryService.HistoryMessage;
+import ai.lifo.spai.shopping.history.ChatHistoryService.ThreadSummary;
 import ai.lifo.spai.shopping.memory.MemoryExtractionService;
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.NodeOutput;
@@ -7,6 +10,10 @@ import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.action.InterruptionMetadata;
 import com.alibaba.cloud.ai.graph.action.InterruptionMetadata.ToolFeedback;
 import com.alibaba.cloud.ai.graph.action.InterruptionMetadata.ToolFeedback.FeedbackResult;
+import com.alibaba.cloud.ai.graph.agent.ReactAgent;
+import com.alibaba.cloud.ai.graph.agent.hook.Hook;
+import com.alibaba.cloud.ai.graph.agent.hook.hip.HumanInTheLoopHook;
+import com.alibaba.cloud.ai.graph.state.StateSnapshot;
 import com.alibaba.cloud.ai.graph.streaming.OutputType;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,19 +27,18 @@ import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Objects;
 
 /**
  * 聊天端点：类型化 SSE 帧 + HITL 中断恢复。
@@ -41,10 +47,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * POST /chat/resume  {threadId, feedbacks} → 从 MysqlSaver checkpoint 恢复子图，继续推流
  * GET  /chat/threads                       → 历史会话列表（父线程，按最近活跃排序）
  * GET  /chat/history?threadId=             → 会话消息记录（用户 + 助手最终回复）
+ * DELETE /chat/history?threadId=           → 删除父会话、子 Agent 会话及其 checkpoint
  * </pre>
  * 中断时子图 checkpoint 落在 {threadId}_subgraph_{agentName}，父图 checkpoint 的 nextNodeId
  * 指向子图节点（ResumableSubGraphAction），resume 带 HUMAN_FEEDBACK metadata 即可自动接力。
- * 待审批的 InterruptionMetadata 按 threadId 缓存在内存，服务重启后需重新发起对话。
+ * resume 时从父 checkpoint 定位子 Agent，再调用该 Agent 的 HITL Hook，根据子图 checkpoint 重建审批态，支持重启与多实例。
  *
  * @author zhanglifeng
  * @since 2026-11-18
@@ -61,13 +68,15 @@ public class ChatController {
 
     private final ObjectMapper objectMapper;
 
-    private final JdbcTemplate jdbcTemplate;
-
     private final MemoryExtractionService memoryExtractionService;
 
     private final MeterRegistry meterRegistry;
 
-    private final Map<String, InterruptionMetadata> pendingInterrupts = new ConcurrentHashMap<>();
+    private final List<ReactAgent> domainAgents;
+
+    private final List<HumanInTheLoopHook> hitlHooks;
+
+    private final ChatHistoryService chatHistoryService;
 
     public record ChatRequest(@NotEmpty(message = "threadId 不能为空") String threadId,
                               @NotEmpty(message = "message 不能为空") String message) {
@@ -80,78 +89,26 @@ public class ChatController {
     public record Decision(String id, String result, String arguments, String reason) {
     }
 
-    public record ThreadSummary(String threadId, String title, long lastActive) {
-    }
-
-    public record HistoryMessage(String role, String text) {
-    }
-
-    /**
-     * 历史会话列表：只列父线程（子图线程是内部实现），按最近活跃排序。
-     * 标题取首条用户消息；GRAPH_THREAD 无创建时间，用最新 checkpoint 时间代替。
-     */
     @GetMapping("/threads")
     public List<ThreadSummary> threads() {
-        record Row(String threadName, long lastActive) {
-        }
-        List<Row> rows = jdbcTemplate.query("""
-                SELECT t.thread_name, UNIX_TIMESTAMP(MAX(c.saved_at)) AS last_active
-                FROM GRAPH_THREAD t
-                LEFT JOIN GRAPH_CHECKPOINT c ON c.thread_id = t.thread_id
-                WHERE t.is_released = FALSE AND t.thread_name NOT LIKE '%\\_subgraph\\_%'
-                GROUP BY t.thread_name
-                ORDER BY last_active DESC
-                """, (rs, i) -> new Row(rs.getString("thread_name"), rs.getLong("last_active")));
+        return chatHistoryService.listThreads();
+    }
 
-        List<ThreadSummary> result = new ArrayList<>(rows.size());
-        for (Row row : rows) {
-            result.add(new ThreadSummary(row.threadName(), firstUserMessage(row.threadName()), row.lastActive()));
-        }
-        return result;
+    @GetMapping("/history")
+    public List<HistoryMessage> history(@RequestParam String threadId) {
+        return chatHistoryService.history(threadId);
+    }
+
+    @DeleteMapping("/history")
+    public ResponseEntity<Void> deleteHistory(@RequestParam String threadId) {
+        return chatHistoryService.deleteHistory(threadId)
+                ? ResponseEntity.noContent().build()
+                : ResponseEntity.notFound().build();
     }
 
     /**
-     * 会话历史：父图最新 checkpoint 的 messages 即"用户输入 + 子 agent 最终回复"序列，
-     * 与聊天 UI 展示粒度一致（工具中间过程在子图 checkpoint，不回看）。
+     * 聊天流：正常结束时异步抽取长期记忆。
      */
-    @GetMapping("/history")
-    public List<HistoryMessage> history(@RequestParam String threadId) {
-        return shoppingGraph.stateOf(RunnableConfig.builder().threadId(threadId).build())
-                .map(snapshot -> {
-                    List<?> messages = snapshot.state().<List<?>>value("messages").orElse(List.of());
-                    List<HistoryMessage> result = new ArrayList<>();
-                    for (Object message : messages) {
-                        if (message instanceof UserMessage user) {
-                            result.add(new HistoryMessage("user", user.getText()));
-                        }
-                        else if (message instanceof AssistantMessage assistant
-                                && StringUtils.hasText(assistant.getText())) {
-                            result.add(new HistoryMessage("assistant", assistant.getText()));
-                        }
-                    }
-                    return result;
-                })
-                .orElse(List.of());
-    }
-
-    private String firstUserMessage(String threadId) {
-        try {
-            List<?> messages = shoppingGraph.stateOf(RunnableConfig.builder().threadId(threadId).build())
-                    .map(snapshot -> snapshot.state().<List<?>>value("messages").orElse(List.of()))
-                    .orElse(List.of());
-            for (Object message : messages) {
-                if (message instanceof UserMessage user && StringUtils.hasText(user.getText())) {
-                    String text = user.getText();
-                    return text.length() <= 30 ? text : text.substring(0, 30) + "…";
-                }
-            }
-        }
-        catch (Exception e) {
-            log.warn("读取会话标题失败, thread={}: {}", threadId, e.getMessage());
-        }
-        return "会话 " + threadId.substring(0, Math.min(8, threadId.length()));
-    }
-
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> stream(@Validated @RequestBody ChatRequest request) {
         Map<String, Object> inputs = Map.of(
@@ -163,9 +120,12 @@ public class ChatController {
                 .doOnComplete(() -> memoryExtractionService.extractAsync(request.threadId()));
     }
 
+    /**
+     * 中断恢复：用户确认或拒绝操作，继续执行剩余的子图。
+     */
     @PostMapping(value = "/resume", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> resume(@RequestBody ResumeRequest request) {
-        InterruptionMetadata pending = pendingInterrupts.remove(request.threadId());
+        InterruptionMetadata pending = restoreInterruption(request.threadId());
         if (pending == null) {
             return Flux.error(new ResponseStatusException(HttpStatus.CONFLICT, "该会话没有待确认的操作"));
         }
@@ -183,6 +143,30 @@ public class ChatController {
                 .addHumanFeedback(feedback)
                 .build();
         return toSse(shoppingGraph.stream(Map.of(), config), request.threadId());
+    }
+
+    private InterruptionMetadata restoreInterruption(String threadId) {
+        RunnableConfig parentConfig = RunnableConfig.builder().threadId(threadId).build();
+        String agentName = shoppingGraph.stateOf(parentConfig).map(StateSnapshot::next).orElse(null);
+        ReactAgent agent = domainAgents.stream()
+                .filter(candidate -> Objects.equals(agentName, candidate.name()))
+                .findFirst()
+                .orElse(null);
+        if (agent == null) {
+            return null;
+        }
+
+        RunnableConfig childConfig = RunnableConfig.builder()
+                .threadId(threadId + "_subgraph_" + agentName)
+                .build();
+        return agent.getAndCompileGraph().stateOf(childConfig)
+                .map(child -> hitlHooks.stream()
+                        .filter(hook -> agentName.equals(hook.getAgentName()))
+                        .map(hook -> hook.interrupt(Hook.getFullHookName(hook), child.state(), childConfig).orElse(null))
+                        .filter(Objects::nonNull)
+                        .findFirst()
+                        .orElse(null))
+                .orElse(null);
     }
 
     private ToolFeedback applyDecision(ToolFeedback tf, List<Decision> decisions) {
@@ -226,11 +210,13 @@ public class ChatController {
     }
 
     private List<Map<String, Object>> toFrames(NodeOutput output, String threadId) {
+        // 遇到中断时产出一个 InterruptionMetadata 流帧
         if (output instanceof InterruptionMetadata interruption) {
-            pendingInterrupts.put(threadId, interruption);
             interruption.toolFeedbacks().forEach(tf -> meterRegistry
                     .counter("shopping.hitl.events", "event", "interrupted", "tool", tf.getName()).increment());
-            List<Map<String, Object>> feedbacks = interruption.toolFeedbacks().stream()
+
+            List<Map<String, Object>> feedbacks = interruption.toolFeedbacks()
+                    .stream()
                     .map(tf -> Map.<String, Object>of(
                             "id", tf.getId(),
                             "name", tf.getName(),

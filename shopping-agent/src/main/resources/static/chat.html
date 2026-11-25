@@ -46,16 +46,46 @@
   #refreshThreads:hover { background: var(--border); }
   #threadList { flex: 1; overflow-y: auto; padding: 8px; }
   .threadItem {
-    display: block; width: 100%; text-align: left; border: 1px solid transparent; background: none;
-    border-radius: var(--radius); padding: 9px 12px; margin-bottom: 4px;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px;
+    width: 100%; text-align: left; border: 1px solid transparent; background: none;
+    border-radius: var(--radius); padding: 9px 8px 9px 12px; margin-bottom: 4px;
   }
   .threadItem:hover { background: var(--muted); }
   .threadItem.active { background: var(--background); border-color: var(--border); box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .threadItem.busy { pointer-events: none; opacity: .55; }
+  .threadMain { min-width: 0; cursor: pointer; }
+  .threadMain:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; border-radius: 4px; }
   .tTitle { font-size: .875rem; color: var(--foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tTime { font-size: .75rem; color: var(--muted-foreground); margin-top: 2px; }
+  .tDelete {
+    width: 24px; height: 24px; border: none; border-radius: 6px; background: none;
+    color: var(--muted-foreground); font-size: 1rem; line-height: 1; opacity: 0;
+  }
+  .threadItem:hover .tDelete, .threadItem:focus-within .tDelete { opacity: 1; }
+  .tDelete:hover { background: #fee2e2; color: var(--red); }
   .sideEmpty { font-size: .8125rem; color: var(--muted-foreground); text-align: center; padding: 24px 12px; }
   #main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; }
-  @media (max-width: 768px) { #sidebar { display: none; } }
+  #sidebarToggle, #sidebarScrim { display: none; }
+  @media (max-width: 768px) {
+    #sidebar {
+      position: fixed; top: 0; bottom: 0; left: 0; z-index: 30; width: min(280px, 82vw);
+      transform: translateX(-100%); transition: transform .2s ease; box-shadow: 4px 0 24px rgba(0,0,0,.12);
+    }
+    body.drawerOpen #sidebar { transform: none; }
+    body.drawerOpen #sidebarScrim {
+      display: block; position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.35);
+    }
+    #sidebarToggle {
+      display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+      width: 34px; height: 34px; border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--background); color: var(--foreground);
+    }
+    #sidebarToggle:hover { background: var(--muted); }
+    #main > header { padding: 12px 14px; }
+    #threadChip { display: none; }
+  }
+  /* 触屏无 hover，删除按钮常显 */
+  @media (hover: none) { .tDelete { opacity: 1; } }
 
   header {
     position: sticky; top: 0; z-index: 10;
@@ -197,8 +227,12 @@
   <div class="sideHead">历史会话 <button id="refreshThreads" title="刷新列表">↻</button></div>
   <div id="threadList"></div>
 </aside>
+<div id="sidebarScrim"></div>
 <div id="main">
 <header>
+  <button id="sidebarToggle" title="历史会话" aria-label="打开历史会话" aria-expanded="false" aria-controls="sidebar">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></svg>
+  </button>
   <div class="logo">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
   </div>
@@ -252,7 +286,17 @@ let currentAssistant = null;
 let toolDetailsById = {};
 let typingEl = null;
 
-document.getElementById('newChat').onclick = () => {
+const sidebarToggle = document.getElementById('sidebarToggle');
+function setDrawer(open) {
+  document.body.classList.toggle('drawerOpen', open);
+  sidebarToggle.setAttribute('aria-expanded', String(open));
+  sidebarToggle.setAttribute('aria-label', open ? '关闭历史会话' : '打开历史会话');
+}
+sidebarToggle.onclick = () => setDrawer(!document.body.classList.contains('drawerOpen'));
+document.getElementById('sidebarScrim').onclick = () => setDrawer(false);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') setDrawer(false); });
+
+function startNewChat() {
   if (busy) return;
   threadId = crypto.randomUUID();
   localStorage.setItem('chatThreadId', threadId);
@@ -262,7 +306,8 @@ document.getElementById('newChat').onclick = () => {
   currentAssistant = null;
   toolDetailsById = {};
   markActiveThread();
-};
+}
+document.getElementById('newChat').onclick = startNewChat;
 
 const threadListEl = document.getElementById('threadList');
 document.getElementById('refreshThreads').onclick = loadThreads;
@@ -280,17 +325,43 @@ async function loadThreads() {
       return;
     }
     for (const t of list) {
-      const b = document.createElement('button');
-      b.className = 'threadItem' + (t.threadId === threadId ? ' active' : '');
-      b.dataset.id = t.threadId;
+      const item = div('threadItem' + (t.threadId === threadId ? ' active' : ''));
+      item.dataset.id = t.threadId;
+
+      const main = div('threadMain');
+      main.tabIndex = 0;
+      main.setAttribute('role', 'button');
+      main.setAttribute('aria-label', '打开会话 ' + (t.title || t.threadId));
       const title = div('tTitle');
       title.textContent = t.title || ('会话 ' + t.threadId.slice(0, 8));
       const time = div('tTime');
       time.textContent = t.lastActive ? fmtTime(t.lastActive) : '';
-      b.appendChild(title);
-      b.appendChild(time);
-      b.onclick = () => switchThread(t.threadId);
-      threadListEl.appendChild(b);
+      main.appendChild(title);
+      main.appendChild(time);
+
+      const del = document.createElement('button');
+      del.className = 'tDelete';
+      del.type = 'button';
+      del.title = '删除会话';
+      del.setAttribute('aria-label', '删除会话 ' + (t.title || t.threadId));
+      del.textContent = '✕';
+
+      const open = () => switchThread(t.threadId);
+      main.onclick = open;
+      main.onkeydown = e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          open();
+        }
+      };
+      del.onclick = e => {
+        e.stopPropagation();
+        deleteThread(t.threadId, item);
+      };
+
+      item.appendChild(main);
+      item.appendChild(del);
+      threadListEl.appendChild(item);
     }
   } catch {}
 }
@@ -298,6 +369,31 @@ async function loadThreads() {
 function markActiveThread() {
   threadListEl.querySelectorAll('.threadItem').forEach(el =>
     el.classList.toggle('active', el.dataset.id === threadId));
+}
+
+async function deleteThread(id, item) {
+  if (busy) return;
+  if (!confirm('删除这个会话及其历史记录？此操作不可恢复。')) return;
+
+  item.classList.add('busy');
+  try {
+    const resp = await fetch('/chat/history?threadId=' + encodeURIComponent(id), { method: 'DELETE' });
+    if (!resp.ok && resp.status !== 404) {
+      let message = resp.statusText;
+      try {
+        const payload = await resp.json();
+        message = payload.message || payload.error || message;
+      } catch {}
+      alert('删除失败：' + message);
+      return;
+    }
+    if (id === threadId) startNewChat();
+    await loadThreads();
+  } catch (e) {
+    alert('删除异常：' + e.message);
+  } finally {
+    item.classList.remove('busy');
+  }
 }
 
 function fmtTime(epochSeconds) {
@@ -314,6 +410,7 @@ async function switchThread(id) {
   localStorage.setItem('chatThreadId', id);
   threadChip.textContent = '会话 ' + id.slice(0, 8);
   markActiveThread();
+  setDrawer(false);
   await loadHistory();
 }
 

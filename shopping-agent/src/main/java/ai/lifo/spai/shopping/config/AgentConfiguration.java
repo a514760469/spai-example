@@ -34,6 +34,7 @@ import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 import javax.sql.DataSource;
 import java.util.*;
@@ -173,6 +174,13 @@ public class AgentConfiguration {
         return domainAgent("guide-agent", GUIDE_PROMPT, chatModel, tools, mysqlSaver);
     }
 
+    @Bean
+    public HumanInTheLoopHook tradeHitlHook() {
+        return HumanInTheLoopHook.builder()
+                .approvalOn("initiatePayment", "发起支付，将从用户账户扣款，不可逆")
+                .build();
+    }
+
     /**
      * 交易助手 agent，负责购物车、结算、地址与支付
      */
@@ -180,7 +188,8 @@ public class AgentConfiguration {
     public ReactAgent tradeAgent(ChatModel chatModel,
                                  ToolCallbackProvider toolCallbackProvider,
                                  LedgerStore ledgerStore,
-                                 MysqlSaver mysqlSaver) {
+                                 MysqlSaver mysqlSaver,
+                                 @Qualifier("tradeHitlHook") HumanInTheLoopHook tradeHitlHook) {
         // 工具调用限制
         ToolCallLimitHook callLimitHook = ToolCallLimitHook.builder()
                 .toolName("initiatePayment")
@@ -202,9 +211,15 @@ public class AgentConfiguration {
         return domainAgent("trade-agent", TRADE_PROMPT, chatModel, tools, mysqlSaver,
 //                ledgerStore,
 //                callLimitHook,
-                HumanInTheLoopHook.builder()
-                        .approvalOn("initiatePayment", "发起支付，将从用户账户扣款，不可逆")
-                        .build());
+                tradeHitlHook);
+    }
+
+    @Bean
+    public HumanInTheLoopHook afterSaleHitlHook() {
+        return HumanInTheLoopHook.builder()
+                .approvalOn("cancelOrder", "取消订单，不可逆")
+                .approvalOn("returnOrderItem", "发起退货，将触发退款流程")
+                .build();
     }
 
     /**
@@ -214,7 +229,8 @@ public class AgentConfiguration {
     public ReactAgent afterSaleAgent(ChatModel chatModel,
                                      ToolCallbackProvider toolCallbackProvider,
                                      LedgerStore ledgerStore,
-                                     MysqlSaver mysqlSaver) {
+                                     MysqlSaver mysqlSaver,
+                                     @Qualifier("afterSaleHitlHook") HumanInTheLoopHook afterSaleHitlHook) {
         List<ToolCallback> tools = Arrays.stream(toolCallbackProvider.getToolCallbacks())
                 .filter(cb -> AFTER_SALE_TOOLS.contains(cb.getToolDefinition().name()))
                 .map(cb -> (ToolCallback) new CredentialInjectingToolCallback(cb, credentialStore, objectMapper))
@@ -226,10 +242,7 @@ public class AgentConfiguration {
         tools.add(loginCallback);
 
         return domainAgent("after-sale-agent", AFTER_SALE_PROMPT, chatModel, tools, mysqlSaver,
-                HumanInTheLoopHook.builder()
-                        .approvalOn("cancelOrder", "取消订单，不可逆")
-                        .approvalOn("returnOrderItem", "发起退货，将触发退款流程")
-                        .build());
+                afterSaleHitlHook);
     }
 
 
