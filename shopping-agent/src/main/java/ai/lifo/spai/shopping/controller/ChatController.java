@@ -106,9 +106,6 @@ public class ChatController {
                 : ResponseEntity.notFound().build();
     }
 
-    /**
-     * 聊天流：正常结束时异步抽取长期记忆。
-     */
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> stream(@Validated @RequestBody ChatRequest request) {
         Map<String, Object> inputs = Map.of(
@@ -210,7 +207,6 @@ public class ChatController {
     }
 
     private List<Map<String, Object>> toFrames(NodeOutput output, String threadId) {
-        // 遇到中断时产出一个 InterruptionMetadata 流帧
         if (output instanceof InterruptionMetadata interruption) {
             interruption.toolFeedbacks().forEach(tf -> meterRegistry
                     .counter("shopping.hitl.events", "event", "interrupted", "tool", tf.getName()).increment());

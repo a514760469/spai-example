@@ -6,7 +6,7 @@ import org.springframework.beans.factory.support.BeanDefinitionRegistryPostProce
 import org.springframework.stereotype.Component;
 
 /**
- * 排除一些框架自带的bean
+ * 移除框架默认的 graphExecutionController，改用本项目的实现。
  *
  * @author zhanglifeng
  * @since 2026-11-05
@@ -14,7 +14,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class ExcludeBeanDefinitionPostProcessor implements BeanDefinitionRegistryPostProcessor {
 
-    // 使用自己的executionController，需要排除默认的 executionController
     @Override
     public void postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry) throws BeansException {
 //        registry.removeBeanDefinition("executionController");

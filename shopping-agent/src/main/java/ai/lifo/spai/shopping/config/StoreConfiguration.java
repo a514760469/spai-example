@@ -17,9 +17,7 @@ import javax.sql.DataSource;
 @RequiredArgsConstructor
 public class StoreConfiguration {
 
-    /**
-     * 长期记忆存储
-     */
+    /** 会话级 KV 存储（凭证等），底层落 MySQL。 */
     @Bean
     public Store databaseStore(DataSource dataSource, JdbcTemplate jdbcTemplate) {
         return new MysqlStore(dataSource, jdbcTemplate);

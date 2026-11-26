@@ -138,11 +138,6 @@ public class GraphExecutionController {
             return Flux.error(new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
                     "inputs cannot be null or empty"));
         }
-//        Object nextNodeValue = inputs.get(HumanFeedbackDispatcher.STATE_KEY);
-//        if (nextNodeValue != null && !(nextNodeValue instanceof String)) {
-//            return Flux.error(new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
-//                    "inputs." + HumanFeedbackDispatcher.STATE_KEY + " must be a string"));
-//        }
         try {
             CompiledGraph graph = graphLoader.loadGraph(graphName);
             RunnableConfig runnableConfig = RunnableConfig.builder()

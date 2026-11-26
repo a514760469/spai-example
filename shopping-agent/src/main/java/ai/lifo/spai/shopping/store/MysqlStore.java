@@ -26,6 +26,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
+ * 基于 MySQL 的 BaseStore 实现，按 namespace + key 存储 JSON 值，供凭证等会话级 KV 使用。
  *
  * @author zhanglifeng
  * @since 2026-11-18
@@ -42,11 +43,6 @@ public class MysqlStore extends BaseStore {
         initializeTable();
     }
 
-    /**
-     * Constructor with custom table name.
-     * @param dataSource database data source
-     * @param tableName table name
-     */
     public MysqlStore(DataSource dataSource, JdbcTemplate jdbc, String tableName) {
         this.dataSource = dataSource;
         this.tableName = tableName;
@@ -222,11 +218,7 @@ public class MysqlStore extends BaseStore {
     }
 
 
-    /**
-     * Initialize database table.
-     */
     private void initializeTable() {
-        // Create table with database-agnostic SQL
         String sql = """
                     CREATE TABLE IF NOT EXISTS %s (
                         id         VARCHAR(500) PRIMARY KEY,

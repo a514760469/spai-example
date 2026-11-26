@@ -54,8 +54,7 @@ import static com.alibaba.cloud.ai.graph.action.AsyncNodeActionWithConfig.node_a
  * </pre>
  * 三个领域子 Agent 以 ReactAgent.asNode(true, false) 作为子图节点嵌入：
  * 子 Agent 可见完整对话历史，但只有最终回复回流父图 messages，工具调用中间推理不污染主上下文。
- * 父图与子 Agent 共享同一个 MysqlSaver 实例，子图 checkpoint 落在 {threadId}_subgraph_{agentName} 线程下，
- * 为后续子图内 human-in-the-loop 中断恢复做准备。
+ * 父图与子 Agent 共享同一个 MysqlSaver，子图 checkpoint 落在 {threadId}_subgraph_{agentName} 线程下，支撑 HITL 中断恢复。
  *
  * @author zhanglifeng
  * @since 2026-11-17
@@ -159,7 +158,6 @@ public class AgentConfiguration {
                 .map(cb -> (ToolCallback) new CredentialInjectingToolCallback(cb, credentialStore, objectMapper))
                 .map(cb -> (ToolCallback) new IdempotentToolCallback(cb, ledgerStore, objectMapper, meterRegistry))
                 .collect(Collectors.toCollection(ArrayList::new));
-        // 构造 login 的 ToolCallback（Spring AI 标准 API）
         ToolCallback loginCallback = MethodToolCallbackProvider.builder()
                 .toolObjects(loginTool).build().getToolCallbacks()[0];
 
@@ -190,7 +188,6 @@ public class AgentConfiguration {
                                  LedgerStore ledgerStore,
                                  MysqlSaver mysqlSaver,
                                  @Qualifier("tradeHitlHook") HumanInTheLoopHook tradeHitlHook) {
-        // 工具调用限制
         ToolCallLimitHook callLimitHook = ToolCallLimitHook.builder()
                 .toolName("initiatePayment")
                 .runLimit(2)
@@ -202,15 +199,12 @@ public class AgentConfiguration {
                 .map(cb -> (ToolCallback) new CredentialInjectingToolCallback(cb, credentialStore, objectMapper))
                 .map(cb -> (ToolCallback) new IdempotentToolCallback(cb, ledgerStore, objectMapper, meterRegistry))
                 .collect(Collectors.toCollection(ArrayList::new));
-        // 构造 login 的 ToolCallback（Spring AI 标准 API）
         ToolCallback loginCallback = MethodToolCallbackProvider.builder()
                 .toolObjects(loginTool).build().getToolCallbacks()[0];
         tools.add(loginCallback);
 
 
         return domainAgent("trade-agent", TRADE_PROMPT, chatModel, tools, mysqlSaver,
-//                ledgerStore,
-//                callLimitHook,
                 tradeHitlHook);
     }
 
@@ -236,7 +230,6 @@ public class AgentConfiguration {
                 .map(cb -> (ToolCallback) new CredentialInjectingToolCallback(cb, credentialStore, objectMapper))
                 .map(cb -> (ToolCallback) new IdempotentToolCallback(cb, ledgerStore, objectMapper, meterRegistry))
                 .collect(Collectors.toCollection(ArrayList::new));
-        // 构造 login 的 ToolCallback（Spring AI 标准 API）
         ToolCallback loginCallback = MethodToolCallbackProvider.builder()
                 .toolObjects(loginTool).build().getToolCallbacks()[0];
         tools.add(loginCallback);
@@ -279,9 +272,6 @@ public class AgentConfiguration {
                 .build());
     }
 
-    /**
-     *
-     */
     private ReactAgent domainAgent(String name,
                                    String systemPrompt,
                                    ChatModel chatModel,

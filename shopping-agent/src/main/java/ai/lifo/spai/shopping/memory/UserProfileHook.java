@@ -19,8 +19,8 @@ import java.util.List;
 
 /**
  * 常驻画像注入：beforeModel 时把用户长期记忆摘要前置为 SystemMessage。
- * 注入以标记幂等——上一轮已注入过（在 messages 里能找到标记）则本轮 no-op，
- * 避免 ReAct 每个模型轮次和后续每轮对话重复堆积。thread 未登录或无记忆时零开销跳过。
+ * 注入以标记幂等——messages 中已存在标记则本轮 no-op，避免 ReAct 各模型轮次与后续对话重复堆积。
+ * thread 未登录或无记忆时跳过。
  *
  * @author zhanglifeng
  * @since 2026-11-25

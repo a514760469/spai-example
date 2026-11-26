@@ -5,8 +5,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Update;
 
 /**
- * user_memory 数据访问层：CRUD 走 BaseMapper + LambdaWrapper，无 XML；
- * 建表 DDL 用注解 SQL 保留启动自动建表能力。
+ * user_memory 数据访问层。建表 DDL 用注解 SQL，保留启动自动建表能力。
  *
  * @author zhanglifeng
  * @since 2026-11-25

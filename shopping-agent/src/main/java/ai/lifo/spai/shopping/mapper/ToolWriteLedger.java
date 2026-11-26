@@ -43,19 +43,13 @@ public class ToolWriteLedger {
      */
     private String status;
 
-    /**
-     * SUCCESS 时缓存的原始工具结果，重复调用直接原样返回
-     */
+    /** SUCCESS 时缓存的原始工具结果，重复调用直接回放。 */
     private String response;
 
-    /**
-     * UNKNOWN 状态下已消耗的有界重发次数（DB DEFAULT 0，接管重发时 +1）
-     */
+    /** UNKNOWN 状态下已消耗的有界重发次数（DB DEFAULT 0，接管重发时 +1）。 */
     private Integer retryCount;
 
-    /**
-     * 以下两列由数据库默认值维护（insert/update 置 null 即被 MP 跳过，走 DDL 的 DEFAULT / ON UPDATE）
-     */
+    /** 以下两列由数据库默认值维护：insert/update 置 null 即被 MP 跳过，走 DDL 的 DEFAULT / ON UPDATE。 */
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

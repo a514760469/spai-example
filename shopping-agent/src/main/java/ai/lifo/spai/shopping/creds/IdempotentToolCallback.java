@@ -30,8 +30,8 @@ import java.util.concurrent.TimeUnit;
 import static ai.lifo.spai.shopping.creds.CredentialStore.rootThreadId;
 
 /**
- * 幂等调用装饰器
- * 调用链：AgentToolNode → IdempotentToolCallback（新）→ CredentialInjectingToolCallback（现有）→ SyncMcpToolCallback → MCP。
+ * 幂等调用装饰器。
+ * 调用链：AgentToolNode → IdempotentToolCallback → CredentialInjectingToolCallback → SyncMcpToolCallback → MCP。
  *
  * @author zhanglifeng
  * @since 2026-11-21
@@ -39,7 +39,7 @@ import static ai.lifo.spai.shopping.creds.CredentialStore.rootThreadId;
 @Slf4j
 public class IdempotentToolCallback implements StateAwareToolCallback {
 
-    /** 交易写集 v1：双扣款/双下单风险项，含 HITL 覆盖的两笔（账本是第二道闸） */
+    /** 需要幂等保护的写工具（双扣款/双下单风险项），作为 HITL 审批之外的兜底。 */
     private static final Set<String> WRITE_TOOLS = Set.of(
             "addToCart", "checkout", "initiatePayment", "cancelOrder", "returnOrderItem");
 

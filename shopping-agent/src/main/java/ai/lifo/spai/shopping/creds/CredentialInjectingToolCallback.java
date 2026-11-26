@@ -128,12 +128,8 @@ public class CredentialInjectingToolCallback implements StateAwareToolCallback {
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record McpContent(String type, String text) {}
 
-    /**
-     * 剥掉 MCP 返回的消息壳，节省token
-     * - 不是 content 数组形态，原样透传
-     */
+    /** 剥掉 MCP content 数组外壳，减少回注模型的 token；非该形态则原样透传。 */
     private String unwrapResult(String raw) {
-        // log.info("原始结果: {}", raw);
         McpContent[] contents;
         try {
             contents = objectMapper.readValue(raw, McpContent[].class);

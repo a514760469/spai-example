@@ -16,6 +16,6 @@ public interface ProductIndexService {
     IndexStats stats();
 
 
-    /** 当前索引状态：条数、最后重建时间— */
+    /** 当前索引状态：条数与最后重建时间。 */
     record IndexStats(long documentCount, Instant lastRebuiltAt, String indexName) { }
 }

@@ -106,7 +106,7 @@ public class MemoryService {
         return hits;
     }
 
-    /** 常驻注入用的画像摘要；无记忆返回空串，调用方零开销跳过 */
+    /** 常驻注入用的画像摘要；无记忆返回空串，调用方据此跳过注入。 */
     public String profile(String userKey) {
         CachedProfile cached = profileCache.get(userKey);
         long now = System.currentTimeMillis();

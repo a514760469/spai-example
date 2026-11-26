@@ -11,15 +11,11 @@ import java.time.Duration;
 import java.util.Optional;
 
 /**
- * 写操作账本：客户端侧"同一业务键至多执行一次"的唯一事实源，不依赖 server 配合。
- * <p>
- * 状态流转全部是带前置条件的单语句更新（WHERE idem_key=? AND status='IN_FLIGHT'），
- * 受影响行数 0 即表示被并发抢跑，天然线性安全，无需事务包装：
- * <pre>
- * tryBegin ──(insert IN_FLIGHT)──► IN_FLIGHT ──markSuccess──► SUCCESS（response 缓存，重复调用原样返回）
- *                                   │        └──markUnknown──► UNKNOWN（有界重发 ≤MAX_AMBIGUOUS_RETRY，用尽后永久拦截待对账）
- *                                   └──release（业务拒绝/确证未执行，删行放行同键重试）
- * </pre>
+ * 写操作账本：客户端侧保证同一业务键至多执行一次，不依赖 server 配合。
+ * 状态流转均为带前置条件的单语句更新（WHERE idem_key=? AND status='IN_FLIGHT'），
+ * 受影响行数为 0 即表示被并发抢跑，无需事务包装。
+ * 状态机：IN_FLIGHT → SUCCESS（缓存结果，重复调用回放）/ UNKNOWN（有界重发，用尽后拦截待对账）；
+ * 业务拒绝或确证未执行时 release 删行放行同键重试。
  * 进程崩溃遗留的 IN_FLIGHT 行超过 {@link #STALE_IN_FLIGHT} 后允许被同键调用接管。
  *
  * @author zhanglifeng
@@ -29,16 +25,10 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class LedgerStore {
 
-    /**
-     * IN_FLIGHT 的独占时限：崩溃/断电后行会停留在 IN_FLIGHT，超时窗口后允许同键调用接管，
-     * 否则该业务键永久无法再写。
-     */
+    /** IN_FLIGHT 独占时限：崩溃后行会停留在 IN_FLIGHT，超时后允许同键接管，否则该业务键永久无法再写。 */
     private static final Duration STALE_IN_FLIGHT = Duration.ofMinutes(10);
 
-    /**
-     * UNKNOWN 的有界重发额度：超时无法区分"未执行"与"已执行但响应丢失"，
-     * 放行一次同键重发化解死锁，再次超时即永久拦截、强制对账。
-     */
+    /** UNKNOWN 有界重发额度：超时无法区分"未执行"与"已执行但响应丢失"，放行一次重发，再次超时即拦截待对账。 */
     private static final int MAX_AMBIGUOUS_RETRY = 1;
 
     private final ToolWriteLedgerMapper mapper;

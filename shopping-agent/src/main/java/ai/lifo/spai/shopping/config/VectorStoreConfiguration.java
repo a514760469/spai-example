@@ -24,13 +24,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 商品语义索引的 Redis VectorStore。
- * metadataFields 必须显式声明（源码 RedisVectorStore.toDocument/doSimilaritySearch 实锤）：
- * 未声明的字段不进 FT 索引 schema —— 既不能参与 filter，也不会出现在检索结果的 metadata 里。
- * Document 字段以 JSON 顶层存储（jsonSet "$"），元数据 key 用裸字段名、不带 metadata. 前缀。
- * initializeSchema=true 只在索引不存在时创建（doCreateIndex 先查 ftList）；改了字段声明要先 FT.DROPINDEX 再重启。
- * 本 Bean 顶掉 spring-ai-starter-vector-store-redis 的自动配置（其 vectorStore Bean 是 ConditionalOnMissingBean），
- * 因为自动配置不声明 metadataFields，filter 与摘要回传都会失效。
+ * 商品语义索引与记忆索引的 Redis VectorStore。
+ * metadataFields 必须显式声明：未声明的字段不进 FT 索引 schema，既不能参与 filter，也不会出现在检索结果 metadata 中。
+ * 元数据 key 用裸字段名（不带 metadata. 前缀）；initializeSchema=true 仅在索引不存在时创建，
+ * 改字段声明需先 FT.DROPINDEX 再重启。
+ * 本 Bean 覆盖 starter 自动配置（其 vectorStore 为 ConditionalOnMissingBean），因为自动配置不声明 metadataFields。
  *
  * @author zhanglifeng
  * @since 2026-10-26
@@ -38,18 +36,11 @@ import java.util.List;
 @Configuration
 public class VectorStoreConfiguration {
 
-//    public static final String PRODUCT_INDEX_NAME = "product-idx";
-
-//    public static final String PRODUCT_KEY_PREFIX = "product:";
-
     public static final String MEMORY_INDEX_NAME = "user-memory-idx";
 
     public static final String MEMORY_KEY_PREFIX = "memory:";
 
-    /**
-     * DashScopeApi.embeddings 单次调用硬限制 25 条文本（客户端 Assert "The input texts limit 25"），
-     * 而 RedisVectorStore 默认 TokenCountBatchingStrategy 只按 token 数分批、不管条数，文档一多必炸。
-     */
+    /** DashScope embeddings 单次硬限制 25 条文本；默认 TokenCountBatchingStrategy 只按 token 分批、不限条数，需自行按条数分批。 */
     private static final int EMBEDDING_BATCH_LIMIT = 25;
 
     @Bean
